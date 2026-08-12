@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Y2K Type Material Lab</title>
+    <link rel="stylesheet" href="./art-text.css?v=1" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <span class="brand-mark">T//M</span>
+          <div>
+            <strong>TYPE MATERIAL</strong>
+            <span>Y2K ART-TEXT EDITOR · V1</span>
+          </div>
+        </div>
+        <div class="runtime-pill">
+          <i aria-hidden="true"></i>
+          <span id="gpuStatus">INITIALIZING WEBGL</span>
+        </div>
+        <div class="top-actions">
+          <a href="./index.html" class="ghost-action">MOTION LAB</a>
+          <button class="ghost-action" id="resetButton" type="button">RESET</button>
+          <button class="export-action" type="button" disabled>PNG · NEXT</button>
+        </div>
+      </header>
+
+      <section class="editor-grid">
+        <aside class="preset-rail" aria-label="艺术字预设">
+          <div class="rail-title">
+            <span>01</span>
+            <div><strong>MATERIALS</strong><small>SELECT A SURFACE</small></div>
+          </div>
+
+          <button class="preset-card" type="button" disabled aria-label="故障点阵，下一版本">
+            <span class="preset-preview dot-preview">GLITCH</span>
+            <span class="preset-meta"><b>DOT//GLITCH</b><em>NEXT</em></span>
+          </button>
+
+          <button class="preset-card is-active" type="button" aria-pressed="true">
+            <span class="preset-preview chrome-preview">CHROME</span>
+            <span class="preset-meta"><b>LIQUID//CHROME</b><em>ACTIVE</em></span>
+          </button>
+
+          <button class="preset-card" type="button" disabled aria-label="霓虹镀铬，下一版本">
+            <span class="preset-preview vhs-preview">Y2K</span>
+            <span class="preset-meta"><b>VHS//CHROME</b><em>NEXT</em></span>
+          </button>
+
+          <div class="technology-note">
+            <span>RENDER BASE</span>
+            <strong>ONE TEXT QUAD</strong>
+            <p>SDF + GLYPH ID<br />BOUNDS LUT</p>
+          </div>
+        </aside>
+
+        <section class="canvas-column" aria-label="艺术字画布">
+          <div class="canvas-toolbar">
+            <div><span>ARTBOARD</span><strong>1600 × 900</strong></div>
+            <div class="view-actions" role="group" aria-label="画布视图">
+              <button class="view-button is-active" id="materialViewButton" type="button">MATERIAL</button>
+              <button class="view-button" id="idViewButton" type="button">ID MAP</button>
+            </div>
+            <span id="glyphReadout">00 GLYPHS</span>
+          </div>
+
+          <div class="artboard-frame">
+            <canvas id="artCanvas" aria-label="Y2K 液态铬艺术字预览"></canvas>
+            <div class="corner-mark top-left" aria-hidden="true"></div>
+            <div class="corner-mark top-right" aria-hidden="true"></div>
+            <div class="corner-mark bottom-left" aria-hidden="true"></div>
+            <div class="corner-mark bottom-right" aria-hidden="true"></div>
+            <div id="renderError" class="render-error" hidden></div>
+          </div>
+
+          <footer class="canvas-status">
+            <span><i class="status-dot"></i><b id="renderStatus">BUILDING SDF</b></span>
+            <span>16-BIT SDF + HEIGHT · GLYPH ID · STATIC RENDER</span>
+            <span id="buildTime">0 MS</span>
+          </footer>
+        </section>
+
+        <aside class="inspector" aria-label="艺术字参数">
+          <div class="rail-title inspector-title">
+            <span>02</span>
+            <div><strong>INSPECTOR</strong><small>LIQUID//CHROME</small></div>
+          </div>
+
+          <section class="control-section">
+            <div class="section-title"><span>TYPOGRAPHY</span><em>01</em></div>
+            <label class="text-control" for="textInput">
+              <span>TEXT</span>
+              <textarea id="textInput" rows="2" maxlength="36" spellcheck="false">Y2K
+CHROME</textarea>
+            </label>
+            <label class="range-control" for="trackingInput">
+              <span><b>TRACKING</b><output id="trackingValue">18 PX</output></span>
+              <input id="trackingInput" type="range" min="-8" max="32" value="4" step="1" />
+            </label>
+            <label class="range-control" for="lineHeightInput">
+              <span><b>LINE HEIGHT</b><output id="lineHeightValue">0.96×</output></span>
+              <input id="lineHeightInput" type="range" min="0.76" max="1.08" value="0.88" step="0.01" />
+            </label>
+          </section>
+
+          <section class="control-section">
+            <div class="section-title"><span>MATERIAL</span><em>02</em></div>
+            <label class="range-control" for="bevelInput">
+              <span><b>ROUNDNESS</b><output id="bevelValue">14 PX</output></span>
+              <input id="bevelInput" type="range" min="4" max="28" value="14" step="1" />
+            </label>
+            <label class="range-control" for="reflectionInput">
+              <span><b>REFLECTION</b><output id="reflectionValue">78%</output></span>
+              <input id="reflectionInput" type="range" min="0" max="100" value="78" step="1" />
+            </label>
+            <label class="range-control" for="extrusionInput">
+              <span><b>DEPTH</b><output id="extrusionValue">9 PX</output></span>
+              <input id="extrusionInput" type="range" min="0" max="24" value="9" step="1" />
+            </label>
+          </section>
+
+          <section class="control-section">
+            <div class="section-title"><span>FX</span><em>03</em></div>
+            <label class="range-control" for="glowInput">
+              <span><b>EDGE GLOW</b><output id="glowValue">28%</output></span>
+              <input id="glowInput" type="range" min="0" max="100" value="28" step="1" />
+            </label>
+            <div class="color-row">
+              <label for="cyanInput"><span>EDGE</span><input id="cyanInput" type="color" value="#39f5ff" /></label>
+              <label for="pinkInput"><span>REFLECT</span><input id="pinkInput" type="color" value="#ff2bd6" /></label>
+            </div>
+          </section>
+
+          <section class="control-section pending-section" aria-disabled="true">
+            <div class="section-title"><span>EXPORT</span><em>04</em></div>
+            <p>透明背景与 2× PNG 将在完整版本启用。</p>
+          </section>
+        </aside>
+      </section>
+    </main>
+
+    <script src="./art-text.js?v=22"></script>
+  </body>
+</html>
