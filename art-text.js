@@ -13,7 +13,6 @@
     createGlyphBodyHeight,
     createGlyphShadingDistance,
     createNoiseField,
-    createReflectionColorField,
   } = window.ArtTextFields;
   const {
     defaultKey: DEFAULT_PRESET_KEY,
@@ -21,12 +20,14 @@
     byKey: PRESETS,
   } = window.ArtTextPresets;
   const REFLECTION_STYLES = Object.freeze({
-    prism: "PRISM CUT",
-    silk: "CRYSTAL CHROME",
-    arctic: "ARCTIC BLUE",
-    magenta: "HOT MAGENTA",
-    sunset: "PEARL SUNSET",
-    tunnel: "NEON TUNNEL",
+    silk: "FANTASY RIDGE",
+    arctic: "ICE CITADEL",
+    sunset: "SOLAR OBSIDIAN",
+  });
+  const REFLECTION_SOURCES = Object.freeze({
+    silk: "./assets/reflection-fields/fantasy-ridge.webp",
+    arctic: "./assets/reflection-fields/ice-citadel.webp",
+    sunset: "./assets/reflection-fields/solar-obsidian.webp",
   });
   const PRESET_SETTING_KEYS = Object.freeze([...new Set(
     PRESET_ORDER.flatMap((key) => Object.keys(PRESETS[key].settings)),
@@ -1068,59 +1069,51 @@
 
   const reflectionFieldCache = new Map();
 
-  function getReflectionField(styleKey) {
-    const safeKey = REFLECTION_STYLES[styleKey] ? styleKey : "prism";
+  function loadReflectionField(styleKey) {
+    const safeKey = REFLECTION_STYLES[styleKey] ? styleKey : "silk";
     if (!reflectionFieldCache.has(safeKey)) {
-      reflectionFieldCache.set(safeKey, {
-        key: safeKey,
-        width: 512,
-        height: 256,
-        pixels: createReflectionColorField(512, 256, safeKey),
-      });
+      reflectionFieldCache.set(safeKey, new Promise((resolve, reject) => {
+        const image = new Image();
+        image.decoding = "async";
+        image.addEventListener("load", () => resolve({ key: safeKey, image }));
+        image.addEventListener("error", () => reject(new Error(`REFLECTION FIELD FAILED: ${safeKey}`)));
+        image.src = REFLECTION_SOURCES[safeKey];
+      }));
     }
     return reflectionFieldCache.get(safeKey);
   }
 
-  function buildReflectionGallery() {
-    ui.reflectionStyleCards.forEach((card) => {
-      const asset = getReflectionField(card.dataset.reflectionStyle);
-      drawAssetCanvas(card.querySelector("canvas"), asset.width, asset.height, (output, index, sourceIndex) => {
-        writeRgb(
-          output,
-          index,
-          asset.pixels[sourceIndex],
-          asset.pixels[sourceIndex + 1],
-          asset.pixels[sourceIndex + 2],
-        );
-      });
-    });
+  function drawReflectionPreview(canvas, image) {
+    const context = canvas.getContext("2d");
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
   }
 
-  function uploadReflectionStyle(styleKey) {
-    const asset = getReflectionField(styleKey);
-    const width = 512;
-    const height = 256;
+  async function buildReflectionGallery() {
+    await Promise.all(ui.reflectionStyleCards.map(async (card) => {
+      const asset = await loadReflectionField(card.dataset.reflectionStyle);
+      drawReflectionPreview(card.querySelector("canvas"), asset.image);
+    }));
+  }
+
+  async function uploadReflectionStyle(styleKey) {
+    const asset = await loadReflectionField(styleKey);
+    if (state.reflectionStyle !== asset.key) return;
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA,
-      width,
-      height,
-      0,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      asset.pixels,
-    );
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, asset.image);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.generateMipmap(gl.TEXTURE_2D);
+    render();
   }
 
   function syncReflectionSelection() {
-    const safeStyle = REFLECTION_STYLES[state.reflectionStyle] ? state.reflectionStyle : "prism";
+    const safeStyle = REFLECTION_STYLES[state.reflectionStyle] ? state.reflectionStyle : "silk";
     const chromeActive = activePreset().mode !== 1;
     ui.reflectionStyleSelect.value = safeStyle;
     ui.reflectionStyleCards.forEach((card) => {
@@ -1132,10 +1125,10 @@
     });
   }
 
-  function selectReflectionStyle(styleKey) {
+  async function selectReflectionStyle(styleKey) {
     if (!REFLECTION_STYLES[styleKey]) return;
     writePresetSetting("reflectionStyle", styleKey);
-    uploadReflectionStyle(styleKey);
+    await uploadReflectionStyle(styleKey);
     syncReflectionSelection();
     ui.materialAnnouncement.textContent = `已应用 ${REFLECTION_STYLES[styleKey]} 反射场`;
     render();
@@ -1729,8 +1722,14 @@
     : gl.getParameter(gl.RENDERER);
   ui.gpuStatus.textContent = `WEBGL 1 · ${renderer}`;
   buildNoiseTexture();
-  buildReflectionGallery();
-  uploadReflectionStyle(state.reflectionStyle);
+  buildReflectionGallery().catch((error) => {
+    ui.renderError.hidden = false;
+    ui.renderError.textContent = error.message;
+  });
+  uploadReflectionStyle(state.reflectionStyle).catch((error) => {
+    ui.renderError.hidden = false;
+    ui.renderError.textContent = error.message;
+  });
   syncControls();
   syncPresetSelection();
   document.fonts.ready.then(rebuildTextures);

@@ -13,7 +13,7 @@
         reflection: 34,
         colorField: 76,
         roughness: 0,
-        reflectionStyle: "prism",
+        reflectionStyle: "silk",
         reflectionOffsetX: 0,
         reflectionOffsetY: 0,
         liquidWarp: 0,
