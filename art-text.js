@@ -784,7 +784,7 @@
 
     varying vec2 vUv;
     uniform sampler2D uSceneTexture;
-    uniform vec2 uOutputSize;
+    uniform vec2 uSceneSize;
     uniform float uScanlineSpacing;
     uniform float uScanlineStrength;
 
@@ -808,7 +808,7 @@
     void main() {
       vec3 scene = toLinear(texture2D(uSceneTexture, vUv).rgb);
       float brightness = luma(scene);
-      float sourceY = vUv.y * uOutputSize.y;
+      float sourceY = vUv.y * uSceneSize.y;
       float pitch = max(5.0, uScanlineSpacing);
       float phase = abs(fract(sourceY / pitch) - 0.5) * 2.0;
       float beamWidth = mix(0.30, 0.68, sqrt(clamp(brightness, 0.0, 1.0)));
@@ -820,7 +820,7 @@
         emissiveGate
       );
 
-      vec2 px = 1.0 / uOutputSize;
+      vec2 px = 1.0 / uSceneSize;
       vec3 bloom = highlightAt(vUv) * 0.34;
       bloom += highlightAt(vUv + vec2(px.x * 2.0, 0.0)) * 0.24;
       bloom += highlightAt(vUv - vec2(px.x * 2.0, 0.0)) * 0.24;
@@ -830,14 +830,14 @@
       vec3 color = scene * rowGain;
       color += bloom * 0.22 * mix(0.52, 1.0, beam);
 
-      float sourceX = vUv.x * uOutputSize.x;
+      float sourceX = vUv.x * uSceneSize.x;
       vec3 phosphor = 1.0 + 0.045 * cos(
         6.2831853 * (sourceX / 6.0 + vec3(0.0, 0.3333333, 0.6666667))
       );
       color *= mix(vec3(1.0), phosphor, smoothstep(0.06, 0.54, brightness));
 
       vec2 centered = (vUv - 0.5) * vec2(1.0, 0.86);
-      float edgeFade = smoothstep(0.60, 0.22, length(centered));
+      float edgeFade = 1.0 - smoothstep(0.22, 0.60, length(centered));
       color *= mix(0.86, 1.0, edgeFade);
       gl_FragColor = vec4(toSrgb(color), 1.0);
     }
@@ -917,7 +917,7 @@
   const crtLocations = {
     position: gl.getAttribLocation(crtProgram, "aPosition"),
     sceneTexture: gl.getUniformLocation(crtProgram, "uSceneTexture"),
-    outputSize: gl.getUniformLocation(crtProgram, "uOutputSize"),
+    sceneSize: gl.getUniformLocation(crtProgram, "uSceneSize"),
     scanlineSpacing: gl.getUniformLocation(crtProgram, "uScanlineSpacing"),
     scanlineStrength: gl.getUniformLocation(crtProgram, "uScanlineStrength"),
   };
@@ -1623,9 +1623,7 @@
   }
 
   function ensureSceneTarget(width, height) {
-    if (sceneTargetWidth === width && sceneTargetHeight === height) return;
-    sceneTargetWidth = width;
-    sceneTargetHeight = height;
+    if (sceneTargetWidth === width && sceneTargetHeight === height) return true;
     gl.activeTexture(gl.TEXTURE7);
     gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
     gl.texImage2D(
@@ -1647,21 +1645,32 @@
       sceneTexture,
       0,
     );
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-      throw new Error("CRT FRAMEBUFFER INCOMPLETE");
-    }
+    const framebufferStatus = gl.checkFramebufferStatus(gl.FRAMEBUFFER);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    if (framebufferStatus !== gl.FRAMEBUFFER_COMPLETE) {
+      sceneTargetWidth = 0;
+      sceneTargetHeight = 0;
+      return false;
+    }
+    sceneTargetWidth = width;
+    sceneTargetHeight = height;
+    return true;
   }
 
   function render() {
     resizeCanvas();
-    const useCrt = activePreset().mode > 1.5 && !state.debugId;
+    let useCrt = activePreset().mode > 1.5 && !state.debugId;
     if (useCrt) {
-      ensureSceneTarget(ui.canvas.width, ui.canvas.height);
+      // Keep the CRT raster tied to the 1600×900 artboard instead of browser
+      // DPR. This caps the FBO at 5.5 MiB and makes scanline spacing stable.
+      useCrt = ensureSceneTarget(TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    }
+    if (useCrt) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
-      gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
+      gl.viewport(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
     }
     gl.useProgram(program);
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
@@ -1714,7 +1723,7 @@
     gl.activeTexture(gl.TEXTURE7);
     gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
     gl.uniform1i(crtLocations.sceneTexture, 7);
-    gl.uniform2f(crtLocations.outputSize, ui.canvas.width, ui.canvas.height);
+    gl.uniform2f(crtLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     gl.uniform1f(crtLocations.scanlineSpacing, state.vhsScanlineSpacing);
     gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
