@@ -21,11 +21,13 @@
   } = window.ArtTextPresets;
   const REFLECTION_STYLES = Object.freeze({
     silk: "FANTASY RIDGE",
+    rose: "ROSE CITADEL",
     arctic: "ICE CITADEL",
     sunset: "SOLAR OBSIDIAN",
   });
   const REFLECTION_SOURCES = Object.freeze({
     silk: "./assets/reflection-fields/fantasy-ridge.webp",
+    rose: "./assets/reflection-fields/rose-citadel.webp?v=1",
     arctic: "./assets/reflection-fields/ice-citadel.webp",
     sunset: "./assets/reflection-fields/solar-obsidian.webp",
   });
