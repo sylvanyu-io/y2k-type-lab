@@ -75,6 +75,8 @@
     reflectionValue: document.querySelector("#reflectionValue"),
     colorFieldInput: document.querySelector("#colorFieldInput"),
     colorFieldValue: document.querySelector("#colorFieldValue"),
+    roughnessInput: document.querySelector("#roughnessInput"),
+    roughnessValue: document.querySelector("#roughnessValue"),
     reflectionStyleSelect: document.querySelector("#reflectionStyleSelect"),
     reflectionOffsetXInput: document.querySelector("#reflectionOffsetXInput"),
     reflectionOffsetXValue: document.querySelector("#reflectionOffsetXValue"),
@@ -200,6 +202,7 @@
     uniform float uBodyCrown;
     uniform float uReflection;
     uniform float uColorFieldStrength;
+    uniform float uRoughness;
     uniform vec2 uReflectionOffset;
     uniform float uLiquidWarp;
     uniform float uDotPitch;
@@ -712,7 +715,10 @@
       fieldUv.x = fract(fieldUv.x);
       fieldUv.y = clamp(fieldUv.y, 0.002, 0.998);
 
-      vec4 fieldSample = texture2D(uColorFieldTexture, fieldUv);
+      // The reflection field owns the detail. Roughness only selects a softer
+      // mip level, so it never wrinkles the glyph normal or dirties a clear
+      // mirror at zero.
+      vec4 fieldSample = texture2D(uColorFieldTexture, fieldUv, uRoughness * 5.5);
       vec3 sampledField = srgbToLinear(fieldSample.rgb);
       float sampledLuma = dot(sampledField, vec3(0.2126, 0.7152, 0.0722));
       sampledField = max(vec3(0.0), mix(vec3(sampledLuma), sampledField, 1.58));
@@ -829,6 +835,7 @@
     bodyCrown: gl.getUniformLocation(program, "uBodyCrown"),
     reflection: gl.getUniformLocation(program, "uReflection"),
     colorFieldStrength: gl.getUniformLocation(program, "uColorFieldStrength"),
+    roughness: gl.getUniformLocation(program, "uRoughness"),
     reflectionOffset: gl.getUniformLocation(program, "uReflectionOffset"),
     liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
     dotPitch: gl.getUniformLocation(program, "uDotPitch"),
@@ -1571,6 +1578,7 @@
     gl.uniform1f(locations.bodyCrown, state.bodyCrown);
     gl.uniform1f(locations.reflection, state.reflection / 100);
     gl.uniform1f(locations.colorFieldStrength, state.colorField / 100);
+    gl.uniform1f(locations.roughness, state.roughness / 100);
     gl.uniform2f(
       locations.reflectionOffset,
       state.reflectionOffsetX / 100,
@@ -1613,6 +1621,7 @@
     ui.bodyCrownInput.value = String(state.bodyCrown);
     ui.reflectionInput.value = String(state.reflection);
     ui.colorFieldInput.value = String(state.colorField);
+    ui.roughnessInput.value = String(state.roughness);
     ui.reflectionStyleSelect.value = state.reflectionStyle;
     ui.reflectionOffsetXInput.value = String(state.reflectionOffsetX);
     ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
@@ -1632,6 +1641,7 @@
     ui.bodyCrownValue.value = String(state.bodyCrown);
     ui.reflectionValue.value = `${state.reflection}%`;
     ui.colorFieldValue.value = `${state.colorField}%`;
+    ui.roughnessValue.value = `${state.roughness}%`;
     ui.reflectionOffsetXValue.value = `${state.reflectionOffsetX > 0 ? "+" : ""}${state.reflectionOffsetX}%`;
     ui.reflectionOffsetYValue.value = `${state.reflectionOffsetY > 0 ? "+" : ""}${state.reflectionOffsetY}%`;
     ui.liquidWarpValue.value = `${state.liquidWarp}%`;
@@ -1663,6 +1673,7 @@
     [ui.bodyCrownInput, "bodyCrown", ui.bodyCrownValue, (value) => String(value)],
     [ui.reflectionInput, "reflection", ui.reflectionValue, (value) => `${value}%`],
     [ui.colorFieldInput, "colorField", ui.colorFieldValue, (value) => `${value}%`],
+    [ui.roughnessInput, "roughness", ui.roughnessValue, (value) => `${value}%`],
     [ui.reflectionOffsetXInput, "reflectionOffsetX", ui.reflectionOffsetXValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.reflectionOffsetYInput, "reflectionOffsetY", ui.reflectionOffsetYValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.liquidWarpInput, "liquidWarp", ui.liquidWarpValue, (value) => `${value}%`],
