@@ -208,8 +208,6 @@
     uniform float uLiquidWarp;
     uniform float uDotPitch;
     uniform float uGlitchStrength;
-    uniform float uVhsScanlineSpacing;
-    uniform float uVhsScanlineStrength;
     uniform float uExtrusion;
     uniform float uGlow;
     uniform float uSceneDetail;
@@ -444,15 +442,6 @@
       );
     }
 
-    float crtScanline(float sourceY, float strengthScale) {
-      float gap = max(6.0, uVhsScanlineSpacing);
-      float phase = fract(sourceY / gap);
-      float distanceToGroove = min(phase, 1.0 - phase);
-      float grooveWidth = min(0.22, 1.35 / gap);
-      float groove = 1.0 - smoothstep(0.0, grooveWidth, distanceToGroove);
-      return 1.0 - uVhsScanlineStrength * strengthScale * groove;
-    }
-
     vec3 backgroundColor(vec2 uv) {
       vec2 centered = uv - 0.5;
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
@@ -461,7 +450,6 @@
         float pinkHalo = exp(-dot((uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7), (uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7)) * 6.0);
         base += uCyan * cyanHalo * 0.045 * uSceneDetail;
         base += uPink * pinkHalo * 0.055 * uSceneDetail;
-        base *= crtScanline(uv.y * uTextureSize.y, 0.45);
         float gridX = exp(-1400.0 * abs(fract(uv.x * 16.0) - 0.5));
         float gridY = exp(-1400.0 * abs(fract(uv.y * 9.0) - 0.5));
         base += vec3(0.08, 0.13, 0.19) * (gridX + gridY) * 0.18 * uSceneDetail;
@@ -479,7 +467,6 @@
         float rightBeam = band(uv.x - uv.y * 0.18, 0.81, 0.060);
         base += uCyan * leftBeam * 0.075 * uSceneDetail;
         base += uPink * rightBeam * 0.085 * uSceneDetail;
-        base *= crtScanline(uv.y * uTextureSize.y, 0.78);
         float noise = texture2D(uNoiseTexture, uv * vec2(5.0, 2.8125)).b - 0.5;
         base += vec3(noise * 0.030 * uSceneDetail);
         float horizon = exp(-260.0 * abs(uv.y - 0.76));
@@ -597,10 +584,9 @@
 
       float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
       float outerRing = max(expanded - fill, 0.0);
-      float scanline = crtScanline(uv.y * uTextureSize.y, 1.0);
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
-      posterChrome *= scanline * mix(1.0, 0.66, dropout);
+      posterChrome *= mix(1.0, 0.66, dropout);
       posterChrome += uCyan * band(localPx.y / 170.0 + glyphSeed, 0.32, 0.16) * 0.14;
       posterChrome += uPink * band(localPx.y / 180.0 - glyphSeed, -0.18, 0.18) * 0.16;
 
@@ -782,6 +768,71 @@
     }
   `;
 
+  const crtFragmentShaderSource = `
+    ${standardDerivatives ? "#extension GL_OES_standard_derivatives : enable" : ""}
+    precision highp float;
+
+    varying vec2 vUv;
+    uniform sampler2D uSceneTexture;
+    uniform vec2 uOutputSize;
+    uniform float uScanlineSpacing;
+    uniform float uScanlineStrength;
+
+    vec3 toLinear(vec3 color) {
+      return pow(max(color, 0.0), vec3(2.2));
+    }
+
+    vec3 toSrgb(vec3 color) {
+      return pow(max(color, 0.0), vec3(1.0 / 2.2));
+    }
+
+    float luma(vec3 color) {
+      return dot(color, vec3(0.2126, 0.7152, 0.0722));
+    }
+
+    vec3 highlightAt(vec2 uv) {
+      vec3 color = toLinear(texture2D(uSceneTexture, uv).rgb);
+      return color * smoothstep(0.22, 0.72, luma(color));
+    }
+
+    void main() {
+      vec3 scene = toLinear(texture2D(uSceneTexture, vUv).rgb);
+      float brightness = luma(scene);
+      float sourceY = vUv.y * uOutputSize.y;
+      float pitch = max(5.0, uScanlineSpacing);
+      float phase = abs(fract(sourceY / pitch) - 0.5) * 2.0;
+      float beamWidth = mix(0.30, 0.68, sqrt(clamp(brightness, 0.0, 1.0)));
+      float beam = exp2(-2.0 * pow(phase / beamWidth, 2.0));
+      float emissiveGate = smoothstep(0.025, 0.46, brightness);
+      float rowGain = mix(
+        1.0,
+        mix(1.0 - uScanlineStrength, 1.055, beam),
+        emissiveGate
+      );
+
+      vec2 px = 1.0 / uOutputSize;
+      vec3 bloom = highlightAt(vUv) * 0.34;
+      bloom += highlightAt(vUv + vec2(px.x * 2.0, 0.0)) * 0.24;
+      bloom += highlightAt(vUv - vec2(px.x * 2.0, 0.0)) * 0.24;
+      bloom += highlightAt(vUv + vec2(px.x * 6.0, 0.0)) * 0.09;
+      bloom += highlightAt(vUv - vec2(px.x * 6.0, 0.0)) * 0.09;
+
+      vec3 color = scene * rowGain;
+      color += bloom * 0.22 * mix(0.52, 1.0, beam);
+
+      float sourceX = vUv.x * uOutputSize.x;
+      vec3 phosphor = 1.0 + 0.045 * cos(
+        6.2831853 * (sourceX / 6.0 + vec3(0.0, 0.3333333, 0.6666667))
+      );
+      color *= mix(vec3(1.0), phosphor, smoothstep(0.06, 0.54, brightness));
+
+      vec2 centered = (vUv - 0.5) * vec2(1.0, 0.86);
+      float edgeFade = smoothstep(0.60, 0.22, length(centered));
+      color *= mix(0.86, 1.0, edgeFade);
+      gl_FragColor = vec4(toSrgb(color), 1.0);
+    }
+  `;
+
   function compileShader(type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -794,9 +845,9 @@
     return shader;
   }
 
-  function createProgram() {
+  function createProgram(fragmentSource = fragmentShaderSource) {
     const vertex = compileShader(gl.VERTEX_SHADER, vertexShaderSource);
-    const fragment = compileShader(gl.FRAGMENT_SHADER, fragmentShaderSource);
+    const fragment = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
     const nextProgram = gl.createProgram();
     gl.attachShader(nextProgram, vertex);
     gl.attachShader(nextProgram, fragment);
@@ -812,8 +863,10 @@
   }
 
   let program;
+  let crtProgram;
   try {
     program = createProgram();
+    crtProgram = createProgram(crtFragmentShaderSource);
   } catch (error) {
     ui.renderError.hidden = false;
     ui.renderError.textContent = error.message;
@@ -841,8 +894,6 @@
     liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
     dotPitch: gl.getUniformLocation(program, "uDotPitch"),
     glitchStrength: gl.getUniformLocation(program, "uGlitchStrength"),
-    vhsScanlineSpacing: gl.getUniformLocation(program, "uVhsScanlineSpacing"),
-    vhsScanlineStrength: gl.getUniformLocation(program, "uVhsScanlineStrength"),
     extrusion: gl.getUniformLocation(program, "uExtrusion"),
     glow: gl.getUniformLocation(program, "uGlow"),
     sceneDetail: gl.getUniformLocation(program, "uSceneDetail"),
@@ -850,6 +901,13 @@
     pink: gl.getUniformLocation(program, "uPink"),
     debugId: gl.getUniformLocation(program, "uDebugId"),
     materialMode: gl.getUniformLocation(program, "uMaterialMode"),
+  };
+  const crtLocations = {
+    position: gl.getAttribLocation(crtProgram, "aPosition"),
+    sceneTexture: gl.getUniformLocation(crtProgram, "uSceneTexture"),
+    outputSize: gl.getUniformLocation(crtProgram, "uOutputSize"),
+    scanlineSpacing: gl.getUniformLocation(crtProgram, "uScanlineSpacing"),
+    scanlineStrength: gl.getUniformLocation(crtProgram, "uScanlineStrength"),
   };
 
   const quadBuffer = gl.createBuffer();
@@ -878,6 +936,10 @@
   const distanceTexture = createTexture(gl.TEXTURE4, gl.NEAREST);
   const colorFieldTexture = createTexture(gl.TEXTURE5, gl.LINEAR);
   const normalTexture = createTexture(gl.TEXTURE6, gl.NEAREST);
+  const sceneTexture = createTexture(gl.TEXTURE7, gl.LINEAR);
+  const sceneFramebuffer = gl.createFramebuffer();
+  let sceneTargetWidth = 0;
+  let sceneTargetHeight = 0;
 
   gl.activeTexture(gl.TEXTURE5);
   gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
@@ -1548,8 +1610,47 @@
     gl.viewport(0, 0, width, height);
   }
 
+  function ensureSceneTarget(width, height) {
+    if (sceneTargetWidth === width && sceneTargetHeight === height) return;
+    sceneTargetWidth = width;
+    sceneTargetHeight = height;
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      width,
+      height,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      null,
+    );
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
+    gl.framebufferTexture2D(
+      gl.FRAMEBUFFER,
+      gl.COLOR_ATTACHMENT0,
+      gl.TEXTURE_2D,
+      sceneTexture,
+      0,
+    );
+    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+      throw new Error("CRT FRAMEBUFFER INCOMPLETE");
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
   function render() {
     resizeCanvas();
+    const useCrt = activePreset().mode > 1.5 && !state.debugId;
+    if (useCrt) {
+      ensureSceneTarget(ui.canvas.width, ui.canvas.height);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
+      gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
     gl.useProgram(program);
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
     gl.enableVertexAttribArray(locations.position);
@@ -1580,8 +1681,6 @@
     gl.uniform1f(locations.liquidWarp, state.liquidWarp / 1000);
     gl.uniform1f(locations.dotPitch, state.dotPitch);
     gl.uniform1f(locations.glitchStrength, state.glitchStrength / 100);
-    gl.uniform1f(locations.vhsScanlineSpacing, state.vhsScanlineSpacing);
-    gl.uniform1f(locations.vhsScanlineStrength, state.vhsScanlineStrength / 100);
     gl.uniform1f(locations.extrusion, state.extrusion);
     gl.uniform1f(locations.glow, state.glow / 100);
     gl.uniform1f(locations.sceneDetail, state.sceneDetail / 100);
@@ -1589,6 +1688,21 @@
     gl.uniform3fv(locations.pink, hexToRgb(state.pink));
     gl.uniform1f(locations.debugId, state.debugId ? 1 : 0);
     gl.uniform1f(locations.materialMode, activePreset().mode);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+    if (!useCrt) return;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
+    gl.useProgram(crtProgram);
+    gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+    gl.enableVertexAttribArray(crtLocations.position);
+    gl.vertexAttribPointer(crtLocations.position, 2, gl.FLOAT, false, 0, 0);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
+    gl.uniform1i(crtLocations.sceneTexture, 7);
+    gl.uniform2f(crtLocations.outputSize, ui.canvas.width, ui.canvas.height);
+    gl.uniform1f(crtLocations.scanlineSpacing, state.vhsScanlineSpacing);
+    gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
