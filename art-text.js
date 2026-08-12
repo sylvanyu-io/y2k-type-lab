@@ -159,6 +159,7 @@
     uniform vec3 uCyan;
     uniform vec3 uPink;
     uniform float uDebugId;
+    uniform float uMaterialMode;
 
     float unpack16(vec2 bytes) {
       vec2 integerBytes = floor(bytes * 255.0 + 0.5);
@@ -258,9 +259,59 @@
       return (encoded * 2.0 - 1.0) * uSpread;
     }
 
+    float insideTexture(vec2 uv) {
+      vec2 minimum = step(vec2(0.0), uv);
+      vec2 maximum = step(uv, vec2(1.0));
+      return minimum.x * minimum.y * maximum.x * maximum.y;
+    }
+
+    float sameGlyphAt(vec2 uv, float expectedId) {
+      float sampledId = texture2D(uIdTexture, uv).r;
+      float sameId = 1.0 - step(0.5 / 255.0, abs(sampledId - expectedId));
+      return insideTexture(uv) * sameId;
+    }
+
+    float gatedRawDistanceTap(vec2 uv, float expectedId) {
+      float encoded = distanceTap(uv).x;
+      float distancePx = (encoded * 2.0 - 1.0) * uSpread;
+      return mix(-uSpread, distancePx, sameGlyphAt(uv, expectedId));
+    }
+
+    float safeRawDistancePx(vec2 uv, float expectedId) {
+      vec2 pixel = uv * uTextureSize - 0.5;
+      vec2 base = floor(pixel);
+      vec2 fraction = fract(pixel);
+      vec2 uv00 = (base + vec2(0.5, 0.5)) / uTextureSize;
+      vec2 uv10 = (base + vec2(1.5, 0.5)) / uTextureSize;
+      vec2 uv01 = (base + vec2(0.5, 1.5)) / uTextureSize;
+      vec2 uv11 = (base + vec2(1.5, 1.5)) / uTextureSize;
+      return mix(
+        mix(
+          gatedRawDistanceTap(uv00, expectedId),
+          gatedRawDistanceTap(uv10, expectedId),
+          fraction.x
+        ),
+        mix(
+          gatedRawDistanceTap(uv01, expectedId),
+          gatedRawDistanceTap(uv11, expectedId),
+          fraction.x
+        ),
+        fraction.y
+      );
+    }
+
+    float safeFillAt(vec2 uv, float expectedId, float aa) {
+      float distancePx = safeRawDistancePx(uv, expectedId) + ${BODY_INFLATE.toFixed(1)};
+      return smoothstep(-aa, aa, distancePx);
+    }
+
     float band(float value, float center, float width) {
       float distanceValue = (value - center) / width;
       return exp(-distanceValue * distanceValue);
+    }
+
+    float hash21(vec2 value) {
+      return fract(sin(dot(value, vec2(127.1, 311.7))) * 43758.5453);
     }
 
     vec3 srgbToLinear(vec3 color) {
@@ -338,6 +389,19 @@
 
     vec3 backgroundColor(vec2 uv) {
       vec2 centered = uv - 0.5;
+      if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
+        vec3 base = mix(vec3(0.002, 0.008, 0.020), vec3(0.035, 0.002, 0.060), uv.y);
+        float cyanHalo = exp(-dot((uv - vec2(0.24, 0.38)) * vec2(1.3, 1.8), (uv - vec2(0.24, 0.38)) * vec2(1.3, 1.8)) * 5.0);
+        float pinkHalo = exp(-dot((uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7), (uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7)) * 6.0);
+        base += uCyan * cyanHalo * 0.045 * uSceneDetail;
+        base += uPink * pinkHalo * 0.055 * uSceneDetail;
+        float scanline = 0.5 + 0.5 * sin(uv.y * uTextureSize.y * 3.14159265);
+        base *= 0.92 + scanline * 0.08;
+        float gridX = exp(-1400.0 * abs(fract(uv.x * 16.0) - 0.5));
+        float gridY = exp(-1400.0 * abs(fract(uv.y * 9.0) - 0.5));
+        base += vec3(0.08, 0.13, 0.19) * (gridX + gridY) * 0.18 * uSceneDetail;
+        return base;
+      }
       vec3 top = vec3(0.66, 0.65, 0.97);
       vec3 middle = vec3(0.95, 0.72, 0.93);
       vec3 bottom = vec3(1.00, 0.66, 0.82);
@@ -380,6 +444,44 @@
       color += vec3(grain * 0.012 * uSceneDetail);
       float vignette = smoothstep(0.86, 0.24, length(centered));
       return color * mix(0.88, 1.04, vignette);
+    }
+
+    vec4 dotGlitchMaterial(
+      vec2 uv,
+      float id,
+      vec2 localPx,
+      float aa
+    ) {
+      float idByte = floor(id * 255.0 + 0.5);
+      float row = floor((localPx.y + 2048.0) / 7.0);
+      float rowNoise = hash21(vec2(idByte * 1.13, row));
+      float tearGate = step(0.72, rowNoise);
+      float tearPx = (rowNoise * 2.0 - 1.0) * 5.5 * tearGate;
+      vec2 sourceUv = uv - vec2(tearPx / uTextureSize.x, 0.0);
+      float tornFill = safeFillAt(sourceUv, id, aa);
+
+      vec2 dotCell = fract((localPx + vec2(tearPx, 0.0)) / 7.0) - 0.5;
+      float dots = 1.0 - smoothstep(0.30, 0.45, length(dotCell));
+      float core = tornFill * dots;
+
+      float cyanGhost = safeFillAt(
+        uv - vec2(3.5 / uTextureSize.x, 0.0),
+        id,
+        aa
+      ) * dots * tearGate;
+      float pinkGhost = safeFillAt(
+        uv + vec2(3.5 / uTextureSize.x, 0.0),
+        id,
+        aa
+      ) * dots * tearGate;
+
+      float microCell = hash21(vec2(idByte + floor(localPx.x / 7.0), row));
+      vec3 coreColor = mix(uCyan, vec3(0.92, 0.99, 1.0), step(0.68, microCell) * 0.72);
+      vec3 premultiplied = coreColor * core;
+      premultiplied += uCyan * cyanGhost * 0.38;
+      premultiplied += uPink * pinkGhost * 0.62;
+      float alpha = clamp(max(core, max(cyanGhost, pinkGhost)), 0.0, 1.0);
+      return vec4(premultiplied, alpha);
     }
 
     void main() {
@@ -518,6 +620,13 @@
       color = mix(color, vec3(0.18, 0.055, 0.22), shadow);
       color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, extrusion * 0.88);
       color += mix(uPink, uCyan, uv.x) * glow * 0.28;
+      if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
+        vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
+        vec4 dotMaterial = dotGlitchMaterial(uv, id, localPx, aa);
+        color = color * (1.0 - dotMaterial.a) + dotMaterial.rgb;
+        gl_FragColor = vec4(color, 1.0);
+        return;
+      }
       color = mix(color, chrome, fill);
       gl_FragColor = vec4(color, 1.0);
     }
@@ -583,6 +692,7 @@
     cyan: gl.getUniformLocation(program, "uCyan"),
     pink: gl.getUniformLocation(program, "uPink"),
     debugId: gl.getUniformLocation(program, "uDebugId"),
+    materialMode: gl.getUniformLocation(program, "uMaterialMode"),
   };
 
   const quadBuffer = gl.createBuffer();
@@ -1060,6 +1170,7 @@
     gl.uniform3fv(locations.cyan, hexToRgb(state.cyan));
     gl.uniform3fv(locations.pink, hexToRgb(state.pink));
     gl.uniform1f(locations.debugId, state.debugId ? 1 : 0);
+    gl.uniform1f(locations.materialMode, activePreset().mode);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
