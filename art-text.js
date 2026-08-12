@@ -529,35 +529,80 @@
       float aa
     ) {
       float idByte = floor(id * 255.0 + 0.5);
-      float pitch = max(4.0, uDotPitch);
-      float row = floor((localPx.y + 2048.0) / pitch);
-      float rowNoise = hash21(vec2(idByte * 1.13, row));
-      float tearGate = step(mix(0.98, 0.66, uGlitchStrength), rowNoise);
-      float tearPx = (rowNoise * 2.0 - 1.0) * mix(0.0, 8.5, uGlitchStrength) * tearGate;
+      float strength = uGlitchStrength;
+      float pitch = max(5.0, uDotPitch);
+
+      // Sparse, taller slices read as intentional signal tears instead of a
+      // fine per-row wobble. The glyph id keeps every split deterministic.
+      float sliceHeight = mix(22.0, 12.0, strength);
+      float sliceRow = floor((localPx.y + 4096.0) / sliceHeight);
+      float sliceNoise = hash21(vec2(idByte * 1.17, sliceRow));
+      float tearGate = step(mix(0.985, 0.82, strength), sliceNoise);
+      float tearDirection = hash21(vec2(sliceRow, idByte * 2.31)) * 2.0 - 1.0;
+      float tearPx = tearDirection * mix(4.0, 25.0, strength) * tearGate;
+
+      // Most dropped rows only remove the cyan face, revealing the persistent
+      // magenta underprint. A few hard drops expose the background entirely.
+      float lineHeight = max(2.5, pitch * 0.46);
+      float lineRow = floor((localPx.y + 2048.0) / lineHeight);
+      float lineNoise = hash21(vec2(idByte * 4.13, lineRow));
+      float frontDrop = step(mix(0.998, 0.94, strength), lineNoise);
+      float hardDrop = step(
+        mix(0.9995, 0.985, strength),
+        hash21(vec2(idByte * 7.91, lineRow + 31.0))
+      );
+
       vec2 sourceUv = uv - vec2(tearPx / uTextureSize.x, 0.0);
       float tornFill = safeFillAt(sourceUv, id, aa);
 
-      vec2 dotCell = fract((localPx + vec2(tearPx, 0.0)) / pitch) - 0.5;
-      float dots = 1.0 - smoothstep(0.30, 0.45, length(dotCell));
-      float core = tornFill * dots;
+      vec2 dotCell = fract((localPx - vec2(tearPx, 0.0)) / pitch) - 0.5;
+      float dots = 1.0 - smoothstep(0.31, 0.45, length(dotCell));
+      float core = tornFill * dots * (1.0 - frontDrop) * (1.0 - hardDrop);
 
-      float cyanGhost = safeFillAt(
-        uv - vec2(mix(0.0, 4.5, uGlitchStrength) / uTextureSize.x, 0.0),
+      float cyanMisregister = safeFillAt(
+        uv - vec2(3.0, -1.0) / uTextureSize,
         id,
         aa
-      ) * dots * tearGate;
-      float pinkGhost = safeFillAt(
-        uv + vec2(mix(0.0, 4.5, uGlitchStrength) / uTextureSize.x, 0.0),
+      ) * dots * (1.0 - hardDrop);
+
+      float pinkTear = safeFillAt(
+        uv - vec2((tearPx + 7.0) / uTextureSize.x, 0.0),
         id,
         aa
-      ) * dots * tearGate;
+      ) * dots * tearGate * (1.0 - hardDrop);
 
-      float microCell = hash21(vec2(idByte + floor(localPx.x / pitch), row));
-      vec3 coreColor = mix(uCyan, vec3(0.92, 0.99, 1.0), step(0.68, microCell) * 0.72);
-      vec3 premultiplied = coreColor * core;
-      premultiplied += uCyan * cyanGhost * 0.38;
-      premultiplied += uPink * pinkGhost * 0.62;
-      float alpha = clamp(max(core, max(cyanGhost, pinkGhost)), 0.0, 1.0);
+      vec2 underprintOffset = vec2(-0.62, -1.0) * max(10.0, uExtrusion);
+      float underprintFill = safeFillAt(
+        uv + underprintOffset / uTextureSize,
+        id,
+        aa
+      ) * (1.0 - hardDrop);
+      float underprint = underprintFill * mix(0.66, 1.0, dots);
+
+      float microCell = hash21(vec2(
+        idByte + floor(localPx.x / pitch),
+        floor(localPx.y / pitch)
+      ));
+      vec3 coreColor = mix(uCyan, vec3(0.94, 1.0, 1.0), step(0.91, microCell) * 0.28);
+
+      float alpha = underprint * 0.86;
+      vec3 premultiplied = uPink * alpha;
+      float cyanAlpha = cyanMisregister * 0.24;
+      premultiplied = uCyan * cyanAlpha + premultiplied * (1.0 - cyanAlpha);
+      alpha = cyanAlpha + alpha * (1.0 - cyanAlpha);
+      float tearAlpha = pinkTear * 0.66;
+      premultiplied = uPink * tearAlpha + premultiplied * (1.0 - tearAlpha);
+      alpha = tearAlpha + alpha * (1.0 - tearAlpha);
+      premultiplied = coreColor * core + premultiplied * (1.0 - core);
+      alpha = core + alpha * (1.0 - core);
+
+      float slicePhase = fract((localPx.y + 4096.0) / sliceHeight);
+      float distanceToSliceEdge = min(slicePhase, 1.0 - slicePhase) * sliceHeight;
+      float tearEdge = (1.0 - smoothstep(0.35, 1.35, distanceToSliceEdge)) * tearGate * tornFill;
+      float edgeAlpha = clamp(tearEdge * 0.42, 0.0, 1.0);
+      vec3 edgeColor = mix(uPink, uCyan, 0.34);
+      premultiplied = edgeColor * edgeAlpha + premultiplied * (1.0 - edgeAlpha);
+      alpha = edgeAlpha + alpha * (1.0 - edgeAlpha);
       return vec4(premultiplied, alpha);
     }
 
@@ -749,7 +794,10 @@
 
       vec3 color = background;
       color = mix(color, vec3(0.18, 0.055, 0.22), shadow);
-      color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, extrusion * 0.88);
+      // DOT owns an ID-gated magenta underprint; do not stack the generic
+      // shifted SDF extrusion underneath it.
+      float genericExtrusion = extrusion * (1.0 - step(0.5, uMaterialMode) * (1.0 - step(1.5, uMaterialMode)));
+      color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, genericExtrusion * 0.88);
       color += mix(uPink, uCyan, uv.x) * glow * 0.28;
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
         vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
