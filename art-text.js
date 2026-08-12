@@ -593,7 +593,7 @@
 
       float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
       float outerRing = max(expanded - fill, 0.0);
-      float scanline = crtScanline(localPx.y, 1.0);
+      float scanline = crtScanline(uv.y * uTextureSize.y, 1.0);
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
       posterChrome *= scanline * mix(1.0, 0.66, dropout);
