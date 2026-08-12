@@ -440,6 +440,15 @@
       );
     }
 
+    float crtScanline(float sourceY, float strengthScale) {
+      float gap = max(6.0, uVhsScanlineSpacing);
+      float phase = fract(sourceY / gap);
+      float distanceToGroove = min(phase, 1.0 - phase);
+      float grooveWidth = min(0.22, 1.35 / gap);
+      float groove = 1.0 - smoothstep(0.0, grooveWidth, distanceToGroove);
+      return 1.0 - uVhsScanlineStrength * strengthScale * groove;
+    }
+
     vec3 backgroundColor(vec2 uv) {
       vec2 centered = uv - 0.5;
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
@@ -448,10 +457,7 @@
         float pinkHalo = exp(-dot((uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7), (uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7)) * 6.0);
         base += uCyan * cyanHalo * 0.045 * uSceneDetail;
         base += uPink * pinkHalo * 0.055 * uSceneDetail;
-        float scanline = 0.5 + 0.5 * sin(
-          6.2831853 * uv.y * uTextureSize.y / max(4.0, uVhsScanlineSpacing)
-        );
-        base *= 1.0 - uVhsScanlineStrength * 0.45 * (1.0 - scanline);
+        base *= crtScanline(uv.y * uTextureSize.y, 0.45);
         float gridX = exp(-1400.0 * abs(fract(uv.x * 16.0) - 0.5));
         float gridY = exp(-1400.0 * abs(fract(uv.y * 9.0) - 0.5));
         base += vec3(0.08, 0.13, 0.19) * (gridX + gridY) * 0.18 * uSceneDetail;
@@ -469,10 +475,7 @@
         float rightBeam = band(uv.x - uv.y * 0.18, 0.81, 0.060);
         base += uCyan * leftBeam * 0.075 * uSceneDetail;
         base += uPink * rightBeam * 0.085 * uSceneDetail;
-        float scanline = 0.5 + 0.5 * sin(
-          6.2831853 * uv.y * uTextureSize.y / max(4.0, uVhsScanlineSpacing)
-        );
-        base *= 1.0 - uVhsScanlineStrength * (1.0 - scanline);
+        base *= crtScanline(uv.y * uTextureSize.y, 0.78);
         float noise = texture2D(uNoiseTexture, uv * vec2(5.0, 2.8125)).b - 0.5;
         base += vec3(noise * 0.030 * uSceneDetail);
         float horizon = exp(-260.0 * abs(uv.y - 0.76));
@@ -590,10 +593,7 @@
 
       float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
       float outerRing = max(expanded - fill, 0.0);
-      float scanlineWave = 0.5 + 0.5 * sin(
-        6.2831853 * localPx.y / max(4.0, uVhsScanlineSpacing)
-      );
-      float scanline = 1.0 - uVhsScanlineStrength * (1.0 - scanlineWave);
+      float scanline = crtScanline(localPx.y, 1.0);
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
       posterChrome *= scanline * mix(1.0, 0.66, dropout);
