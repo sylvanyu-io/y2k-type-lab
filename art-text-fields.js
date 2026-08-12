@@ -40,12 +40,19 @@
     return pixels;
   }
 
-  function createReflectionColorField(width = 512, height = 256) {
+  function createReflectionColorField(width = 512, height = 256, styleKey = "prism") {
     const pixels = new Uint8Array(width * height * 4);
     const clamp01 = (value) => Math.max(0, Math.min(1, value));
+    const smoothstep = (edge0, edge1, value) => {
+      const amount = clamp01((value - edge0) / Math.max(edge1 - edge0, 0.0001));
+      return amount * amount * (3 - 2 * amount);
+    };
+    const wrappedDelta = (value, center) => {
+      const delta = value - center;
+      return delta - Math.round(delta);
+    };
     const gaussian = (u, v, centerX, centerY, spreadX, spreadY) => {
-      const directX = Math.abs(u - centerX);
-      const wrappedX = Math.min(directX, 1 - directX);
+      const wrappedX = wrappedDelta(u, centerX);
       const deltaY = v - centerY;
       return Math.exp(-0.5 * (
         (wrappedX * wrappedX) / (spreadX * spreadX)
@@ -57,46 +64,178 @@
       color[1] += source[1] * intensity;
       color[2] += source[2] * intensity;
     };
+    const band = (value, center, spread) => Math.exp(-0.5 * Math.pow((value - center) / spread, 2));
+    const softBox = (u, v, centerX, centerY, halfWidth, halfHeight, feather) => {
+      const outsideX = Math.max(Math.abs(wrappedDelta(u, centerX)) - halfWidth, 0);
+      const outsideY = Math.max(Math.abs(v - centerY) - halfHeight, 0);
+      return 1 - smoothstep(0, feather, Math.hypot(outsideX, outsideY));
+    };
+
+    const renderers = {
+      prism(u, v) {
+        const color = [0.012, 0.006, 0.038];
+        const violetSky = band(v, 0.18, 0.20);
+        const silverMist = band(v, 0.34, 0.105);
+        const magentaFloor = band(v, 0.76, 0.17);
+        const whitePanel = gaussian(u, v, 0.24, 0.30, 0.125, 0.115);
+        const pearlPanel = gaussian(u, v, 0.68, 0.27, 0.095, 0.10);
+        const cyanPanel = gaussian(u, v, 0.08, 0.45, 0.050, 0.32);
+        const bluePanel = gaussian(u, v, 0.43, 0.43, 0.060, 0.28);
+        const pinkPanel = gaussian(u, v, 0.84, 0.56, 0.075, 0.33);
+        const goldPanel = gaussian(u, v, 0.55, 0.47, 0.024, 0.21);
+        const whiteSlit = band(v, 0.235 + Math.sin((u + 0.11) * Math.PI * 2) * 0.050, 0.019);
+        const cyanRibbon = band(v, 0.42 + Math.sin((u + 0.08) * Math.PI * 2) * 0.065, 0.030);
+        const prismRibbon = band(v, 0.52 + Math.sin((u * 2.0 + 0.31) * Math.PI * 2) * 0.055, 0.027);
+        const darkHorizon = band(v, 0.585 + Math.sin((u + 0.37) * Math.PI * 2) * 0.035, 0.043);
+        const pinkRibbon = band(v, 0.73 - Math.sin((u + 0.23) * Math.PI * 2) * 0.055, 0.040);
+        const diagonalPink = band(v + (u - 0.5) * 0.26, 0.74, 0.075);
+        const darkSide = gaussian(u, v, 0.98, 0.47, 0.055, 0.30);
+
+        addColor(color, [0.12, 0.16, 0.70], violetSky * 0.58);
+        addColor(color, [1.45, 1.62, 2.10], silverMist * 0.08);
+        addColor(color, [3.5, 3.6, 4.8], whitePanel * 0.55);
+        addColor(color, [2.4, 2.2, 3.5], pearlPanel * 0.38);
+        addColor(color, [0.00, 3.4, 5.5], cyanPanel * 0.82);
+        addColor(color, [0.02, 0.48, 4.8], bluePanel * 0.78);
+        addColor(color, [5.3, 0.015, 2.45], pinkPanel * 0.82);
+        addColor(color, [4.9, 1.45, 0.08], goldPanel * 0.74);
+        addColor(color, [4.8, 4.5, 5.5], whiteSlit * 0.92);
+        addColor(color, [0.00, 3.0, 5.4], cyanRibbon * 0.66);
+        addColor(color, [1.0, 0.10, 4.8], prismRibbon * 0.58);
+        addColor(color, [4.8, 0.01, 1.95], pinkRibbon * 0.68);
+        addColor(color, [4.2, 0.02, 2.0], diagonalPink * 0.58);
+        addColor(color, [4.1, 0.025, 1.75], magentaFloor * 0.64);
+        const shade = Math.max(0.035, 1 - darkHorizon * 0.94 - darkSide * 0.62);
+        for (let channel = 0; channel < 3; channel += 1) color[channel] *= shade;
+        return {
+          color,
+          highlight: whiteSlit * 0.82 + whitePanel * 0.46 + pearlPanel * 0.28 + goldPanel * 0.16,
+          darkMix: darkHorizon * 0.90 + darkSide * 0.56,
+          darkTarget: [0.005, 0.001, 0.020],
+        };
+      },
+
+      silk(u, v) {
+        const color = [0.024, 0.014, 0.060];
+        const whiteCloud = gaussian(u, v, 0.34, 0.24, 0.23, 0.17);
+        const cyanCloud = gaussian(u, v, 0.08, 0.50, 0.17, 0.36);
+        const lilacCloud = gaussian(u, v, 0.57, 0.45, 0.27, 0.27);
+        const pinkCloud = gaussian(u, v, 0.84, 0.70, 0.25, 0.29);
+        const warmCloud = gaussian(u, v, 0.31, 0.72, 0.13, 0.18);
+        const darkBasin = gaussian(u, v, 0.50, 0.61, 0.32, 0.10);
+        addColor(color, [2.7, 2.8, 3.5], whiteCloud * 0.64);
+        addColor(color, [0.00, 2.8, 4.2], cyanCloud * 0.58);
+        addColor(color, [0.82, 0.20, 3.5], lilacCloud * 0.48);
+        addColor(color, [4.0, 0.035, 1.7], pinkCloud * 0.62);
+        addColor(color, [3.2, 0.72, 0.14], warmCloud * 0.27);
+        return {
+          color,
+          highlight: whiteCloud * 0.68 + lilacCloud * 0.12,
+          darkMix: darkBasin * 0.74,
+          darkTarget: [0.010, 0.004, 0.032],
+        };
+      },
+
+      arctic(u, v) {
+        const color = [0.004, 0.012, 0.050];
+        const cyanColumn = gaussian(u, v, 0.08, 0.50, 0.032, 0.38);
+        const blueColumn = gaussian(u, v, 0.38, 0.47, 0.048, 0.33);
+        const iceColumn = gaussian(u, v, 0.72, 0.42, 0.024, 0.30);
+        const polarMist = gaussian(u, v, 0.55, 0.18, 0.24, 0.13);
+        const scanner = band(v + 0.20 * Math.sin((u + 0.12) * Math.PI * 2), 0.34, 0.016);
+        const darkHorizon = band(v, 0.63, 0.052);
+        addColor(color, [0.00, 3.8, 5.8], cyanColumn * 0.88);
+        addColor(color, [0.00, 0.38, 5.2], blueColumn * 0.86);
+        addColor(color, [2.2, 4.2, 5.4], iceColumn * 0.78);
+        addColor(color, [1.1, 1.5, 2.8], polarMist * 0.44);
+        addColor(color, [4.2, 5.2, 6.0], scanner * 0.82);
+        return {
+          color,
+          highlight: scanner * 0.84 + iceColumn * 0.22,
+          darkMix: darkHorizon * 0.88,
+          darkTarget: [0.001, 0.006, 0.034],
+        };
+      },
+
+      magenta(u, v) {
+        const color = [0.020, 0.002, 0.028];
+        const whiteBox = softBox(u, v, 0.24, 0.22, 0.13, 0.060, 0.012);
+        const pinkBox = softBox(u, v, 0.82, 0.53, 0.060, 0.31, 0.016);
+        const violetBox = softBox(u, v, 0.08, 0.48, 0.042, 0.28, 0.015);
+        const goldSlit = softBox(u, v, 0.53, 0.43, 0.018, 0.19, 0.008);
+        const hotFloor = band(v, 0.79, 0.15);
+        const blackGutter = softBox(u, v, 0.54, 0.60, 0.24, 0.035, 0.012);
+        addColor(color, [4.5, 3.8, 5.0], whiteBox * 0.78);
+        addColor(color, [6.0, 0.005, 2.1], pinkBox * 0.92);
+        addColor(color, [1.5, 0.02, 5.2], violetBox * 0.84);
+        addColor(color, [5.2, 1.2, 0.04], goldSlit * 0.82);
+        addColor(color, [5.0, 0.005, 1.7], hotFloor * 0.68);
+        return {
+          color,
+          highlight: whiteBox * 0.76 + goldSlit * 0.42,
+          darkMix: blackGutter * 0.96,
+          darkTarget: [0.014, 0.001, 0.022],
+        };
+      },
+
+      sunset(u, v) {
+        const color = [0.028, 0.008, 0.024];
+        const sun = gaussian(u, v, 0.56, 0.30, 0.15, 0.16);
+        const horizon = band(v + 0.022 * Math.sin(u * Math.PI * 2), 0.54, 0.018);
+        const amberFloor = band(v, 0.77, 0.16);
+        const copperSide = gaussian(u, v, 0.87, 0.53, 0.078, 0.31);
+        const peachPanel = gaussian(u, v, 0.18, 0.42, 0.10, 0.25);
+        const darkBand = band(v, 0.65, 0.054);
+        addColor(color, [4.8, 3.0, 0.72], sun * 0.74);
+        addColor(color, [6.0, 2.1, 0.12], horizon * 0.88);
+        addColor(color, [4.1, 0.36, 0.05], amberFloor * 0.68);
+        addColor(color, [4.6, 0.14, 0.06], copperSide * 0.72);
+        addColor(color, [3.4, 1.3, 1.1], peachPanel * 0.52);
+        return {
+          color,
+          highlight: horizon * 0.82 + sun * 0.42,
+          darkMix: darkBand * 0.90,
+          darkTarget: [0.024, 0.004, 0.012],
+        };
+      },
+
+      tunnel(u, v) {
+        const color = [0.004, 0.002, 0.018];
+        const deltaX = wrappedDelta(u, 0.50);
+        const deltaY = v - 0.52;
+        const radius = Math.hypot(deltaX * 1.35, deltaY * 0.82);
+        const cyanRings = band(radius, 0.14, 0.012) + band(radius, 0.37, 0.018);
+        const pinkRings = band(radius, 0.245, 0.015) + band(radius, 0.48, 0.022);
+        const violetMist = band(radius, 0.31, 0.075);
+        const portal = gaussian(u, v, 0.50, 0.52, 0.065, 0.10);
+        addColor(color, [0.00, 4.0, 5.8], cyanRings * 0.84);
+        addColor(color, [5.8, 0.005, 2.4], pinkRings * 0.82);
+        addColor(color, [0.42, 0.03, 2.4], violetMist * 0.22);
+        addColor(color, [4.4, 4.8, 5.4], portal * 0.82);
+        return {
+          color,
+          highlight: portal * 0.72 + cyanRings * 0.18,
+          darkMix: 0,
+          darkTarget: [0.003, 0.001, 0.012],
+        };
+      },
+    };
+    const render = renderers[styleKey] || renderers.prism;
 
     for (let y = 0; y < height; y += 1) {
       const v = y / (height - 1);
       for (let x = 0; x < width; x += 1) {
         const u = x / (width - 1);
-        const color = [0.055 + v * 0.035, 0.045, 0.105 + (1 - v) * 0.055];
-        const whiteDome = gaussian(u, v, 0.52, 0.20, 0.28, 0.12);
-        const whiteCeiling = gaussian(u, v, 0.03, 0.055, 0.34, 0.050);
-        const cyanWall = gaussian(u, v, 0.17, 0.48, 0.070, 0.28);
-        const blueGlass = gaussian(u, v, 0.40, 0.49, 0.052, 0.22);
-        const pinkWall = gaussian(u, v, 0.82, 0.45, 0.078, 0.30);
-        const goldSlit = gaussian(u, v, 0.285, 0.53, 0.038, 0.18);
-        const pinkFloor = gaussian(u, v, 0.58, 0.73, 0.38, 0.095);
-        const whiteFloor = gaussian(u, v, 0.62, 0.90, 0.30, 0.060);
-        const cyanRibbonCenter = 0.43 + Math.sin((u + 0.08) * Math.PI * 2) * 0.075;
-        const cyanRibbon = Math.exp(-Math.pow((v - cyanRibbonCenter) / 0.048, 2));
-        const magentaRibbonCenter = 0.67 - Math.sin((u + 0.23) * Math.PI * 2) * 0.055;
-        const magentaRibbon = Math.exp(-Math.pow((v - magentaRibbonCenter) / 0.056, 2));
-
-        addColor(color, [1.18, 1.10, 1.32], whiteDome * 0.66);
-        addColor(color, [0.74, 0.86, 1.28], whiteCeiling * 0.38);
-        addColor(color, [0.04, 1.18, 1.58], cyanWall * 1.72);
-        addColor(color, [0.12, 0.34, 1.62], blueGlass * 1.32);
-        addColor(color, [1.72, 0.055, 0.92], pinkWall * 1.76);
-        addColor(color, [1.52, 0.62, 0.08], goldSlit * 1.12);
-        addColor(color, [1.62, 0.075, 0.88], pinkFloor * 1.48);
-        addColor(color, [1.12, 0.92, 1.16], whiteFloor * 0.46);
-        addColor(color, [0.04, 0.82, 1.40], cyanRibbon * 0.58);
-        addColor(color, [1.48, 0.035, 0.72], magentaRibbon * 0.62);
-
-        const darkFlag = gaussian(u, v, 0.55, 0.53, 0.18, 0.055);
-        const darkSide = gaussian(u, v, 0.96, 0.48, 0.075, 0.22);
-        const shade = 1 - darkFlag * 0.78 - darkSide * 0.40;
+        const sample = render(u, v);
         const pixelIndex = (y * width + x) * 4;
         for (let channel = 0; channel < 3; channel += 1) {
-          const mapped = 1 - Math.exp(-Math.max(0, color[channel] * shade) * 0.92);
+          const radiance = Math.max(0, sample.color[channel]);
+          const brightMapped = radiance / (1 + radiance);
+          const darkMix = clamp01(sample.darkMix);
+          const mapped = brightMapped * (1 - darkMix) + sample.darkTarget[channel] * darkMix;
           pixels[pixelIndex + channel] = Math.round(Math.pow(clamp01(mapped), 1 / 2.2) * 255);
         }
-        const highlightEnergy = clamp01(whiteDome * 0.58 + whiteCeiling * 0.30 + whiteFloor * 0.36);
-        pixels[pixelIndex + 3] = Math.round(highlightEnergy * 255);
+        pixels[pixelIndex + 3] = Math.round(clamp01(sample.highlight) * 255);
       }
     }
     return pixels;
@@ -139,22 +278,25 @@
     const passes = 3;
     const idealWidth = Math.sqrt((12 * sigma * sigma) / passes + 1);
     const radius = Math.max(1, Math.round((idealWidth - 1) * 0.5));
-    const support = radius * passes + 2;
 
     glyphs.forEach((glyph) => {
-      const left = Math.max(0, glyph.cellLeft - support);
-      const top = Math.max(0, glyph.cellTop - support);
-      const right = Math.min(width, glyph.cellRight + support);
-      const bottom = Math.min(height, glyph.cellBottom + support);
+      const left = Math.max(0, glyph.cellLeft);
+      const top = Math.max(0, glyph.cellTop);
+      const right = Math.min(width, glyph.cellRight);
+      const bottom = Math.min(height, glyph.cellBottom);
       const localWidth = right - left;
       const localHeight = bottom - top;
       let field = new Float32Array(localWidth * localHeight);
 
-      for (let y = glyph.cellTop; y < glyph.cellBottom; y += 1) {
+      // A blurred coverage field bends the face only near its silhouettes.
+      // Unlike positive distance, it contains no medial-axis topology, so
+      // branched glyphs such as M cannot expose a centre-line seam.
+      for (let y = top; y < bottom; y += 1) {
         const localRow = (y - top) * localWidth;
         const globalRow = y * width;
-        for (let x = glyph.cellLeft; x < glyph.cellRight; x += 1) {
-          field[localRow + x - left] = alphaPixels[(globalRow + x) * 4 + 3] / 255;
+        for (let x = left; x < right; x += 1) {
+          const sourceIndex = globalRow + x;
+          field[localRow + x - left] = alphaPixels[sourceIndex * 4 + 3] / 255;
         }
       }
 
@@ -162,12 +304,13 @@
         field = boxBlurZero(field, localWidth, localHeight, radius);
       }
 
-      for (let y = glyph.cellTop; y < glyph.cellBottom; y += 1) {
+      for (let y = top; y < bottom; y += 1) {
         const localRow = (y - top) * localWidth;
         const globalRow = y * width;
-        for (let x = glyph.cellLeft; x < glyph.cellRight; x += 1) {
+        for (let x = left; x < right; x += 1) {
+          const sourceIndex = globalRow + x;
           const blurred = Math.max(0, Math.min(1, field[localRow + x - left]));
-          output[globalRow + x] = 1 - Math.pow(1 - blurred, 1.6);
+          output[sourceIndex] = 1 - Math.pow(1 - blurred, 1.15);
         }
       }
     });
