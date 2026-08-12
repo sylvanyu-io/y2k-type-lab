@@ -116,23 +116,37 @@
       },
 
       silk(u, v) {
-        const color = [0.024, 0.014, 0.060];
-        const whiteCloud = gaussian(u, v, 0.34, 0.24, 0.23, 0.17);
-        const cyanCloud = gaussian(u, v, 0.08, 0.50, 0.17, 0.36);
-        const lilacCloud = gaussian(u, v, 0.57, 0.45, 0.27, 0.27);
-        const pinkCloud = gaussian(u, v, 0.84, 0.70, 0.25, 0.29);
-        const warmCloud = gaussian(u, v, 0.31, 0.72, 0.13, 0.18);
-        const darkBasin = gaussian(u, v, 0.50, 0.61, 0.32, 0.10);
-        addColor(color, [2.7, 2.8, 3.5], whiteCloud * 0.64);
-        addColor(color, [0.00, 2.8, 4.2], cyanCloud * 0.58);
-        addColor(color, [0.82, 0.20, 3.5], lilacCloud * 0.48);
-        addColor(color, [4.0, 0.035, 1.7], pinkCloud * 0.62);
-        addColor(color, [3.2, 0.72, 0.14], warmCloud * 0.27);
+        // A bright chrome room made of broad silver surfaces plus a handful of
+        // thin, high-energy lights. The field stays clean at roughness 0 while
+        // its mip chain turns those slits into the former silk-like gradient.
+        const color = [0.022, 0.024, 0.052];
+        const silverCeiling = band(v, 0.22, 0.14);
+        const whiteRoom = gaussian(u, v, 0.42, 0.26, 0.31, 0.17);
+        const cyanWall = gaussian(u, v, 0.07, 0.48, 0.075, 0.34);
+        const blueWall = gaussian(u, v, 0.79, 0.42, 0.065, 0.29);
+        const pinkFloor = band(v, 0.73, 0.155);
+        const graphiteHorizon = band(v + Math.sin(u * Math.PI * 2) * 0.018, 0.515, 0.046);
+        const whiteSlit = band(v, 0.145 + Math.sin((u + 0.08) * Math.PI * 2) * 0.028, 0.012);
+        const cyanSlit = gaussian(u, v, 0.155, 0.50, 0.017, 0.33);
+        const pinkSlit = band(v + wrappedDelta(u, 0.58) * 0.22, 0.685, 0.017);
+        const goldSlit = gaussian(u, v, 0.61, 0.41, 0.014, 0.18);
+        const pearlPin = gaussian(u, v, 0.88, 0.24, 0.020, 0.070);
+
+        addColor(color, [1.25, 1.38, 1.95], silverCeiling * 0.52);
+        addColor(color, [2.35, 2.52, 3.05], whiteRoom * 0.58);
+        addColor(color, [0.00, 4.6, 6.2], cyanWall * 0.86);
+        addColor(color, [0.02, 0.46, 5.1], blueWall * 0.72);
+        addColor(color, [5.6, 0.035, 1.85], pinkFloor * 0.78);
+        addColor(color, [5.8, 5.6, 6.4], whiteSlit * 0.92);
+        addColor(color, [0.00, 5.0, 6.4], cyanSlit * 0.74);
+        addColor(color, [6.0, 0.02, 2.4], pinkSlit * 0.72);
+        addColor(color, [5.5, 1.7, 0.12], goldSlit * 0.64);
+        addColor(color, [4.5, 4.2, 5.2], pearlPin * 0.74);
         return {
           color,
-          highlight: whiteCloud * 0.68 + lilacCloud * 0.12,
-          darkMix: darkBasin * 0.74,
-          darkTarget: [0.010, 0.004, 0.032],
+          highlight: whiteSlit * 0.82 + whiteRoom * 0.22 + pearlPin * 0.46 + goldSlit * 0.18,
+          darkMix: graphiteHorizon * 0.84,
+          darkTarget: [0.020, 0.016, 0.045],
         };
       },
 

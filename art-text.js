@@ -22,7 +22,7 @@
   } = window.ArtTextPresets;
   const REFLECTION_STYLES = Object.freeze({
     prism: "PRISM CUT",
-    silk: "LIQUID SILK",
+    silk: "CRYSTAL CHROME",
     arctic: "ARCTIC BLUE",
     magenta: "HOT MAGENTA",
     sunset: "PEARL SUNSET",
