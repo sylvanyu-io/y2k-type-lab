@@ -20,6 +20,21 @@
     order: PRESET_ORDER,
     byKey: PRESETS,
   } = window.ArtTextPresets;
+  const REFLECTION_STYLES = Object.freeze({
+    prism: "PRISM CUT",
+    silk: "LIQUID SILK",
+    arctic: "ARCTIC BLUE",
+    magenta: "HOT MAGENTA",
+    sunset: "PEARL SUNSET",
+    tunnel: "NEON TUNNEL",
+  });
+  const PRESET_SETTING_KEYS = Object.freeze([...new Set(
+    PRESET_ORDER.flatMap((key) => Object.keys(PRESETS[key].settings)),
+  )]);
+  const settingsByPreset = Object.fromEntries(PRESET_ORDER.map((key) => [
+    key,
+    { ...PRESETS[key].settings },
+  ]));
 
   const DEFAULTS = Object.freeze({
     text: "Y2K\nCHROME",
@@ -28,8 +43,6 @@
     activePreset: DEFAULT_PRESET_KEY,
     ...PRESETS[DEFAULT_PRESET_KEY].settings,
   });
-  const MATERIAL_SETTING_KEYS = Object.freeze(Object.keys(PRESETS[DEFAULT_PRESET_KEY].settings));
-
   const ui = {
     canvas: document.querySelector("#artCanvas"),
     gpuStatus: document.querySelector("#gpuStatus"),
@@ -39,11 +52,13 @@
     glyphReadout: document.querySelector("#glyphReadout"),
     inspectorMaterialName: document.querySelector("#inspectorMaterialName"),
     materialAnnouncement: document.querySelector("#materialAnnouncement"),
-    presetCards: [...document.querySelectorAll(".preset-card[data-material]")],
-    previewCanvases: new Map(
-      [...document.querySelectorAll("canvas[data-material-preview]")]
-        .map((canvas) => [canvas.dataset.materialPreview, canvas]),
+    presetCards: [...document.querySelectorAll("[data-material-preset]")],
+    reflectionStyleCards: [...document.querySelectorAll("[data-reflection-style]")],
+    generatedAssetCanvases: new Map(
+      [...document.querySelectorAll("canvas[data-generated-asset]")]
+        .map((canvas) => [canvas.dataset.generatedAsset, canvas]),
     ),
+    materialSpecificControls: [...document.querySelectorAll("[data-materials]")],
     resetButton: document.querySelector("#resetButton"),
     materialViewButton: document.querySelector("#materialViewButton"),
     idViewButton: document.querySelector("#idViewButton"),
@@ -60,6 +75,21 @@
     reflectionValue: document.querySelector("#reflectionValue"),
     colorFieldInput: document.querySelector("#colorFieldInput"),
     colorFieldValue: document.querySelector("#colorFieldValue"),
+    reflectionStyleSelect: document.querySelector("#reflectionStyleSelect"),
+    reflectionOffsetXInput: document.querySelector("#reflectionOffsetXInput"),
+    reflectionOffsetXValue: document.querySelector("#reflectionOffsetXValue"),
+    reflectionOffsetYInput: document.querySelector("#reflectionOffsetYInput"),
+    reflectionOffsetYValue: document.querySelector("#reflectionOffsetYValue"),
+    liquidWarpInput: document.querySelector("#liquidWarpInput"),
+    liquidWarpValue: document.querySelector("#liquidWarpValue"),
+    dotPitchInput: document.querySelector("#dotPitchInput"),
+    dotPitchValue: document.querySelector("#dotPitchValue"),
+    glitchStrengthInput: document.querySelector("#glitchStrengthInput"),
+    glitchStrengthValue: document.querySelector("#glitchStrengthValue"),
+    vhsScanlineSpacingInput: document.querySelector("#vhsScanlineSpacingInput"),
+    vhsScanlineSpacingValue: document.querySelector("#vhsScanlineSpacingValue"),
+    vhsScanlineStrengthInput: document.querySelector("#vhsScanlineStrengthInput"),
+    vhsScanlineStrengthValue: document.querySelector("#vhsScanlineStrengthValue"),
     extrusionInput: document.querySelector("#extrusionInput"),
     extrusionValue: document.querySelector("#extrusionValue"),
     glowInput: document.querySelector("#glowInput"),
@@ -82,25 +112,38 @@
     ui.inspectorMaterialName.textContent = preset.label;
     ui.canvas.setAttribute("aria-label", preset.ariaLabel);
     ui.presetCards.forEach((card) => {
-      const isActive = card.dataset.material === preset.key;
+      const isActive = card.dataset.materialPreset === preset.key;
       card.classList.toggle("is-active", isActive);
       card.setAttribute("aria-pressed", String(isActive));
-      const status = card.querySelector(".preset-meta em");
-      if (status && !card.disabled) status.textContent = isActive ? "ACTIVE" : "SELECT";
     });
+    ui.materialSpecificControls.forEach((control) => {
+      const visible = control.dataset.materials.split(/\s+/).includes(preset.key);
+      control.hidden = !visible;
+      control.querySelectorAll("input, button, select, textarea").forEach((element) => {
+        element.disabled = !visible;
+      });
+    });
+    syncReflectionSelection();
   }
 
-  function selectPreset(key, { applyDefaults = true } = {}) {
+  function writePresetSetting(key, value) {
+    state[key] = value;
+    if (settingsByPreset[state.activePreset] && PRESET_SETTING_KEYS.includes(key)) {
+      settingsByPreset[state.activePreset][key] = value;
+    }
+  }
+
+  function selectPreset(key) {
     const preset = PRESETS[key];
     if (!preset) return;
     state.activePreset = key;
-    if (applyDefaults) Object.assign(state, preset.settings);
+    Object.assign(state, settingsByPreset[key]);
+    uploadReflectionStyle(state.reflectionStyle);
     syncControls();
     syncPresetSelection();
     ui.materialAnnouncement.textContent = `已应用 ${preset.label}`;
     setDebugView(false);
     render();
-    scheduleMaterialPreviewRefresh();
   }
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = TEXTURE_WIDTH;
@@ -157,6 +200,12 @@
     uniform float uBodyCrown;
     uniform float uReflection;
     uniform float uColorFieldStrength;
+    uniform vec2 uReflectionOffset;
+    uniform float uLiquidWarp;
+    uniform float uDotPitch;
+    uniform float uGlitchStrength;
+    uniform float uVhsScanlineSpacing;
+    uniform float uVhsScanlineStrength;
     uniform float uExtrusion;
     uniform float uGlow;
     uniform float uSceneDetail;
@@ -399,8 +448,10 @@
         float pinkHalo = exp(-dot((uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7), (uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7)) * 6.0);
         base += uCyan * cyanHalo * 0.045 * uSceneDetail;
         base += uPink * pinkHalo * 0.055 * uSceneDetail;
-        float scanline = 0.5 + 0.5 * sin(uv.y * uTextureSize.y * 3.14159265);
-        base *= 0.92 + scanline * 0.08;
+        float scanline = 0.5 + 0.5 * sin(
+          6.2831853 * uv.y * uTextureSize.y / max(4.0, uVhsScanlineSpacing)
+        );
+        base *= 1.0 - uVhsScanlineStrength * 0.45 * (1.0 - scanline);
         float gridX = exp(-1400.0 * abs(fract(uv.x * 16.0) - 0.5));
         float gridY = exp(-1400.0 * abs(fract(uv.y * 9.0) - 0.5));
         base += vec3(0.08, 0.13, 0.19) * (gridX + gridY) * 0.18 * uSceneDetail;
@@ -418,8 +469,10 @@
         float rightBeam = band(uv.x - uv.y * 0.18, 0.81, 0.060);
         base += uCyan * leftBeam * 0.075 * uSceneDetail;
         base += uPink * rightBeam * 0.085 * uSceneDetail;
-        float scanline = 0.5 + 0.5 * sin(uv.y * uTextureSize.y * 3.14159265);
-        base *= 0.86 + scanline * 0.14;
+        float scanline = 0.5 + 0.5 * sin(
+          6.2831853 * uv.y * uTextureSize.y / max(4.0, uVhsScanlineSpacing)
+        );
+        base *= 1.0 - uVhsScanlineStrength * (1.0 - scanline);
         float noise = texture2D(uNoiseTexture, uv * vec2(5.0, 2.8125)).b - 0.5;
         base += vec3(noise * 0.030 * uSceneDetail);
         float horizon = exp(-260.0 * abs(uv.y - 0.76));
@@ -477,29 +530,30 @@
       float aa
     ) {
       float idByte = floor(id * 255.0 + 0.5);
-      float row = floor((localPx.y + 2048.0) / 7.0);
+      float pitch = max(4.0, uDotPitch);
+      float row = floor((localPx.y + 2048.0) / pitch);
       float rowNoise = hash21(vec2(idByte * 1.13, row));
-      float tearGate = step(0.72, rowNoise);
-      float tearPx = (rowNoise * 2.0 - 1.0) * 5.5 * tearGate;
+      float tearGate = step(mix(0.98, 0.66, uGlitchStrength), rowNoise);
+      float tearPx = (rowNoise * 2.0 - 1.0) * mix(0.0, 8.5, uGlitchStrength) * tearGate;
       vec2 sourceUv = uv - vec2(tearPx / uTextureSize.x, 0.0);
       float tornFill = safeFillAt(sourceUv, id, aa);
 
-      vec2 dotCell = fract((localPx + vec2(tearPx, 0.0)) / 7.0) - 0.5;
+      vec2 dotCell = fract((localPx + vec2(tearPx, 0.0)) / pitch) - 0.5;
       float dots = 1.0 - smoothstep(0.30, 0.45, length(dotCell));
       float core = tornFill * dots;
 
       float cyanGhost = safeFillAt(
-        uv - vec2(3.5 / uTextureSize.x, 0.0),
+        uv - vec2(mix(0.0, 4.5, uGlitchStrength) / uTextureSize.x, 0.0),
         id,
         aa
       ) * dots * tearGate;
       float pinkGhost = safeFillAt(
-        uv + vec2(3.5 / uTextureSize.x, 0.0),
+        uv + vec2(mix(0.0, 4.5, uGlitchStrength) / uTextureSize.x, 0.0),
         id,
         aa
       ) * dots * tearGate;
 
-      float microCell = hash21(vec2(idByte + floor(localPx.x / 7.0), row));
+      float microCell = hash21(vec2(idByte + floor(localPx.x / pitch), row));
       vec3 coreColor = mix(uCyan, vec3(0.92, 0.99, 1.0), step(0.68, microCell) * 0.72);
       vec3 premultiplied = coreColor * core;
       premultiplied += uCyan * cyanGhost * 0.38;
@@ -536,7 +590,10 @@
 
       float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
       float outerRing = max(expanded - fill, 0.0);
-      float scanline = 0.86 + 0.14 * (0.5 + 0.5 * sin(localPx.y * 3.14159265));
+      float scanlineWave = 0.5 + 0.5 * sin(
+        6.2831853 * localPx.y / max(4.0, uVhsScanlineSpacing)
+      );
+      float scanline = 1.0 - uVhsScanlineStrength * (1.0 - scanlineWave);
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
       posterChrome *= scanline * mix(1.0, 0.66, dropout);
@@ -593,7 +650,8 @@
       ` : ""}
 
       // The body crown and edge roll are intentionally separate. Body height
-      // comes from broad blurred coverage; the rim direction and coordinate
+      // comes from per-glyph blurred coverage, so strong curvature stays near
+      // the silhouette and never inherits the glyph's medial axis.
       // both come from one smooth shading SDF, while raw SDF only clips shape.
       float bodyStepPx = 5.0;
       vec2 bodyStep = vec2(bodyStepPx) / uTextureSize;
@@ -602,9 +660,12 @@
       float bodyTop = sampleShapeData16(uv - vec2(0.0, bodyStep.y)).x;
       float bodyBottom = sampleShapeData16(uv + vec2(0.0, bodyStep.y)).x;
       vec2 bodyGradient = vec2(bodyRight - bodyLeft, bodyBottom - bodyTop) / (bodyStepPx * 2.0);
-      vec2 bodyNormalXY = -bodyGradient * uBodyCrown;
-      float bodyLength = length(bodyNormalXY);
-      bodyNormalXY *= min(1.0, 0.52 / max(bodyLength, 0.001));
+      // BODY HEIGHT is normalized; convert it to a virtual balloon height in
+      // source pixels. The previous 1x scale left the whole face nearly flat.
+      vec2 rawBodyNormal = -bodyGradient * uBodyCrown * 1.3;
+      float rawBodyLength = length(rawBodyNormal);
+      float bodySlope = 0.64 * (1.0 - exp(-rawBodyLength / 0.64));
+      vec2 bodyNormalXY = rawBodyNormal * bodySlope / max(rawBodyLength, 0.001);
 
       vec2 edgeGradient = sampleEdgeGradient16(uv);
       float edgeGradientLength = length(edgeGradient);
@@ -626,11 +687,13 @@
       vec4 glyphBounds = boundsForId(id);
       vec2 glyphSize = max(glyphBounds.zw, vec2(0.02));
       vec2 glyphLocal = clamp((uv - glyphBounds.xy) / glyphSize, vec2(-0.75), vec2(0.75));
-      normalXY += glyphLocal * vec2(0.022, 0.014) * hasCell;
+      // A very shallow analytic crown keeps the broad face alive without
+      // following individual strokes or creating a centre-line discontinuity.
+      normalXY += glyphLocal * vec2(0.0024, 0.0017) * uBodyCrown * hasCell;
 
       vec2 noiseUv = uv * vec2(1.35, 1.85) + vec2(2.7, -1.9);
       vec2 liquid = texture2D(uNoiseTexture, noiseUv).rg - 0.5;
-      normalXY += liquid * 0.016;
+      normalXY += liquid * uLiquidWarp;
       vec3 normal = normalize(vec3(normalXY, 1.0));
       ${DEBUG_SURFACE === "normal" ? `
         gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
@@ -638,36 +701,34 @@
       ` : ""}
 
       vec3 reflected = reflect(vec3(0.0, 0.0, -1.0), normal);
-      reflected = normalize(vec3(reflected.xy * 1.34, reflected.z));
+      reflected = normalize(vec3(reflected.xy * 1.62, reflected.z));
       vec2 fieldUv = colorFieldUv(reflected);
       float glyphSeed = fract(floor(id * 255.0 + 0.5) * 0.6180339);
-      fieldUv.x = clamp(fieldUv.x + (glyphSeed - 0.5) * 0.028, 0.002, 0.998);
+      // Preserve a low-frequency per-glyph bias without turning the reflection
+      // into a flat vertical decal. Surface normal remains the primary lookup.
+      fieldUv += glyphLocal * vec2(0.020, 0.12);
+      fieldUv.x += (glyphSeed - 0.5) * 0.028;
+      fieldUv += uReflectionOffset;
+      fieldUv.x = fract(fieldUv.x);
+      fieldUv.y = clamp(fieldUv.y, 0.002, 0.998);
 
       vec4 fieldSample = texture2D(uColorFieldTexture, fieldUv);
       vec3 sampledField = srgbToLinear(fieldSample.rgb);
       float sampledLuma = dot(sampledField, vec3(0.2126, 0.7152, 0.0722));
       sampledField = max(vec3(0.0), mix(vec3(sampledLuma), sampledField, 1.58));
 
-      float whitePatch = softBox(fieldUv, vec2(0.28, 0.26), vec2(0.16, 0.16), 0.085);
-      float cyanStrip = softBox(fieldUv, vec2(0.82, 0.43), vec2(0.042, 0.28), 0.050);
-      float pinkRibbon = band(fieldUv.y + fieldUv.x * 0.13, 0.77, 0.10);
-      float darkRibbon = softBox(fieldUv, vec2(0.56, 0.53), vec2(0.22, 0.055), 0.060);
-      vec3 fieldLinear = sampledField * mix(0.68, 0.98, uColorFieldStrength);
-      fieldLinear += vec3(fieldSample.a * 0.12 * uColorFieldStrength);
-      fieldLinear += vec3(1.0, 0.98, 1.0) * whitePatch * 0.14 * uColorFieldStrength;
-      fieldLinear += srgbToLinear(uCyan) * cyanStrip * 0.58 * uColorFieldStrength;
-      fieldLinear += srgbToLinear(uPink) * pinkRibbon * 0.48 * uColorFieldStrength;
-      fieldLinear *= 1.0 - darkRibbon * 0.46 * uColorFieldStrength;
+      vec3 fieldLinear = sampledField * mix(0.58, 1.08, uColorFieldStrength);
+      fieldLinear += vec3(fieldSample.a * 0.075 * uColorFieldStrength);
 
       float fresnel = pow(1.0 - clamp(normal.z, 0.0, 1.0), 2.45);
-      float areaLight = pow(max(dot(normal, normalize(vec3(-0.38, -0.48, 0.79))), 0.0), 10.5);
+      float areaLight = pow(max(dot(normal, normalize(vec3(-0.38, -0.48, 0.79))), 0.0), 16.0);
       vec3 edgeTint = mix(uPink, uCyan, clamp(normal.x * 0.5 + 0.5, 0.0, 1.0));
       vec3 chromeLinear = mix(
-        srgbToLinear(vec3(0.60, 0.62, 0.68)),
+        srgbToLinear(vec3(0.25, 0.27, 0.34)),
         fieldLinear,
         0.24 + uReflection * 0.76
       );
-      chromeLinear += vec3(areaLight * mix(0.30, 0.58, uColorFieldStrength));
+      chromeLinear += vec3(areaLight * mix(0.16, 0.38, uColorFieldStrength));
       chromeLinear += srgbToLinear(edgeTint) * fresnel * 0.56;
       chromeLinear *= 0.94 + normal.z * 0.08;
       vec3 chrome = linearToSrgb(acesApprox(chromeLinear * 0.98));
@@ -768,6 +829,12 @@
     bodyCrown: gl.getUniformLocation(program, "uBodyCrown"),
     reflection: gl.getUniformLocation(program, "uReflection"),
     colorFieldStrength: gl.getUniformLocation(program, "uColorFieldStrength"),
+    reflectionOffset: gl.getUniformLocation(program, "uReflectionOffset"),
+    liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
+    dotPitch: gl.getUniformLocation(program, "uDotPitch"),
+    glitchStrength: gl.getUniformLocation(program, "uGlitchStrength"),
+    vhsScanlineSpacing: gl.getUniformLocation(program, "uVhsScanlineSpacing"),
+    vhsScanlineStrength: gl.getUniformLocation(program, "uVhsScanlineStrength"),
     extrusion: gl.getUniformLocation(program, "uExtrusion"),
     glow: gl.getUniformLocation(program, "uGlow"),
     sceneDetail: gl.getUniformLocation(program, "uSceneDetail"),
@@ -806,7 +873,7 @@
 
   gl.activeTexture(gl.TEXTURE5);
   gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
   gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   gl.texImage2D(
     gl.TEXTURE_2D,
@@ -820,15 +887,251 @@
     new Uint8Array([118, 124, 146, 255]),
   );
 
-  function buildReflectionColorField() {
+  function drawAssetCanvas(canvas, sourceWidth, sourceHeight, writePixel) {
+    if (!canvas) return;
+    const context = canvas.getContext("2d", { alpha: false });
+    const image = context.createImageData(canvas.width, canvas.height);
+    const scale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
+    const drawWidth = sourceWidth * scale;
+    const drawHeight = sourceHeight * scale;
+    const offsetX = (canvas.width - drawWidth) * 0.5;
+    const offsetY = (canvas.height - drawHeight) * 0.5;
+    for (let y = 0; y < canvas.height; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        const outputIndex = (y * canvas.width + x) * 4;
+        if (x + 0.5 < offsetX || x + 0.5 >= offsetX + drawWidth
+          || y + 0.5 < offsetY || y + 0.5 >= offsetY + drawHeight) {
+          writeRgb(image.data, outputIndex, 5, 4, 8);
+          image.data[outputIndex + 3] = 255;
+          continue;
+        }
+        const sourceX = Math.min(
+          sourceWidth - 1,
+          Math.floor(((x + 0.5 - offsetX) / drawWidth) * sourceWidth),
+        );
+        const sourceY = Math.min(
+          sourceHeight - 1,
+          Math.floor(((y + 0.5 - offsetY) / drawHeight) * sourceHeight),
+        );
+        const sourceIndex = (sourceY * sourceWidth + sourceX) * 4;
+        writePixel(image.data, outputIndex, sourceIndex, sourceX, sourceY);
+        image.data[outputIndex + 3] = 255;
+      }
+    }
+    context.putImageData(image, 0, 0);
+  }
+
+  function drawGeneratedAsset(key, sourceWidth, sourceHeight, writePixel) {
+    drawAssetCanvas(ui.generatedAssetCanvases.get(key), sourceWidth, sourceHeight, writePixel);
+  }
+
+  function writeRgb(output, index, red, green, blue) {
+    output[index] = Math.max(0, Math.min(255, Math.round(red)));
+    output[index + 1] = Math.max(0, Math.min(255, Math.round(green)));
+    output[index + 2] = Math.max(0, Math.min(255, Math.round(blue)));
+  }
+
+  function unpackPixels16(pixels, index, highChannel, lowChannel) {
+    return (pixels[index + highChannel] * 256 + pixels[index + lowChannel]) / 65535;
+  }
+
+  function writeSdfPreview(output, index, encoded, spread) {
+    const distance = (encoded * 2 - 1) * spread;
+    const magnitude = Math.min(1, Math.abs(distance) / 16);
+    const zeroContour = Math.exp(-Math.abs(distance) * 0.72);
+    const outside = [32 + magnitude * 42, 10 + magnitude * 12, 54 + magnitude * 66];
+    const inside = [10 + magnitude * 25, 54 + magnitude * 150, 72 + magnitude * 174];
+    const color = distance >= 0 ? inside : outside;
+    writeRgb(
+      output,
+      index,
+      color[0] + zeroContour * 220,
+      color[1] + zeroContour * 210,
+      color[2] + zeroContour * 188,
+    );
+  }
+
+  function idPreviewColor(idByte) {
+    const phase = (idByte * 0.6180339) % 1;
+    return [0, 1 / 3, 2 / 3].map((offset) => (
+      140 + 100 * Math.cos(Math.PI * 2 * (phase + offset))
+    ));
+  }
+
+  function updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels, boundsPixels) {
+    drawGeneratedAsset("coverage", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      const coverage = shapePixels[sourceIndex + 2];
+      writeRgb(output, index, coverage, coverage, coverage);
+    });
+    drawGeneratedAsset("body", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      const height = unpackPixels16(shapePixels, sourceIndex, 0, 1);
+      const coverage = shapePixels[sourceIndex + 2] / 255;
+      writeRgb(
+        output,
+        index,
+        10 + height * 218 * coverage,
+        7 + height * 134 * coverage,
+        18 + height * 238 * coverage,
+      );
+    });
+    drawGeneratedAsset("clip-sdf", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      writeSdfPreview(output, index, unpackPixels16(distancePixels, sourceIndex, 0, 1), SDF_SPREAD);
+    });
+    drawGeneratedAsset("shading-sdf", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      writeSdfPreview(
+        output,
+        index,
+        unpackPixels16(distancePixels, sourceIndex, 2, 3),
+        SHADING_SDF_SPREAD,
+      );
+    });
+    drawGeneratedAsset("normal", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      const x = (unpackPixels16(normalPixels, sourceIndex, 0, 1) * 2 - 1) * 1.25;
+      const y = (unpackPixels16(normalPixels, sourceIndex, 2, 3) * 2 - 1) * 1.25;
+      const z = Math.sqrt(Math.max(0, 1 - Math.min(1, x * x + y * y)));
+      writeRgb(output, index, (x * 0.5 + 0.5) * 255, (y * 0.5 + 0.5) * 255, z * 255);
+    });
+    drawGeneratedAsset("glyph-id", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      const idByte = idPixels[sourceIndex];
+      if (idByte === 0) {
+        writeRgb(output, index, 5, 4, 8);
+        return;
+      }
+      const color = idPreviewColor(idByte);
+      const coverage = shapePixels[sourceIndex + 2] / 255;
+      const strength = 0.20 + coverage * 0.80;
+      writeRgb(output, index, color[0] * strength, color[1] * strength, color[2] * strength);
+    });
+
+    const idCanvasPreview = ui.generatedAssetCanvases.get("glyph-id");
+    if (idCanvasPreview) {
+      const context = idCanvasPreview.getContext("2d");
+      context.save();
+      context.strokeStyle = "rgba(255,255,255,.58)";
+      context.lineWidth = 1;
+      state.glyphs.forEach((glyph) => {
+        context.strokeRect(
+          (glyph.cellLeft / TEXTURE_WIDTH) * idCanvasPreview.width + 0.5,
+          (glyph.cellTop / TEXTURE_HEIGHT) * idCanvasPreview.height + 0.5,
+          ((glyph.cellRight - glyph.cellLeft) / TEXTURE_WIDTH) * idCanvasPreview.width - 1,
+          ((glyph.cellBottom - glyph.cellTop) / TEXTURE_HEIGHT) * idCanvasPreview.height - 1,
+        );
+      });
+      context.restore();
+    }
+
+    const boundsCanvas = ui.generatedAssetCanvases.get("bounds-lut");
+    if (boundsCanvas) {
+      const context = boundsCanvas.getContext("2d", { alpha: false });
+      context.fillStyle = "#050407";
+      context.fillRect(0, 0, boundsCanvas.width, boundsCanvas.height);
+      context.strokeStyle = "rgba(183,166,255,.16)";
+      context.lineWidth = 1;
+      context.beginPath();
+      context.moveTo(0, Math.floor(boundsCanvas.height * 0.5) + 0.5);
+      context.lineTo(boundsCanvas.width, Math.floor(boundsCanvas.height * 0.5) + 0.5);
+      context.stroke();
+      state.glyphs.forEach((glyph) => {
+        const centerOffset = glyph.idByte * 4;
+        const sizeOffset = (256 + glyph.idByte) * 4;
+        const centerX = unpackPixels16(boundsPixels, centerOffset, 0, 1);
+        const centerY = unpackPixels16(boundsPixels, centerOffset, 2, 3);
+        const width = boundsPixels[sizeOffset] / 255;
+        const height = boundsPixels[sizeOffset + 1] / 255;
+        const x = ((glyph.idByte + 0.5) / 256) * boundsCanvas.width;
+        const topY = (0.08 + centerY * 0.34) * boundsCanvas.height;
+        const bottomY = (0.58 + height * 0.30) * boundsCanvas.height;
+        const color = idPreviewColor(glyph.idByte);
+        context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
+        context.fillRect(Math.floor(x) - 2, topY - 3, 5, 6);
+        context.fillRect(Math.floor(x) - 2, bottomY - 3, 5, 6);
+        context.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, .66)`;
+        context.beginPath();
+        context.moveTo(x, topY);
+        context.lineTo(x, bottomY);
+        context.stroke();
+        context.fillStyle = "rgba(255,255,255,.68)";
+        context.fillRect(x - Math.max(1, width * 9), bottomY + 7, Math.max(2, width * 18), 1);
+        context.fillRect(x + 7, bottomY - Math.max(1, height * 9), 1, Math.max(2, height * 18));
+        context.fillStyle = "rgba(255,255,255,.42)";
+        context.fillRect(centerX * boundsCanvas.width - 1, topY - 1, 2, 2);
+      });
+    }
+  }
+
+  const reflectionFieldCache = new Map();
+
+  function getReflectionField(styleKey) {
+    const safeKey = REFLECTION_STYLES[styleKey] ? styleKey : "prism";
+    if (!reflectionFieldCache.has(safeKey)) {
+      reflectionFieldCache.set(safeKey, {
+        key: safeKey,
+        width: 512,
+        height: 256,
+        pixels: createReflectionColorField(512, 256, safeKey),
+      });
+    }
+    return reflectionFieldCache.get(safeKey);
+  }
+
+  function buildReflectionGallery() {
+    ui.reflectionStyleCards.forEach((card) => {
+      const asset = getReflectionField(card.dataset.reflectionStyle);
+      drawAssetCanvas(card.querySelector("canvas"), asset.width, asset.height, (output, index, sourceIndex) => {
+        writeRgb(
+          output,
+          index,
+          asset.pixels[sourceIndex],
+          asset.pixels[sourceIndex + 1],
+          asset.pixels[sourceIndex + 2],
+        );
+      });
+    });
+  }
+
+  function uploadReflectionStyle(styleKey) {
+    const asset = getReflectionField(styleKey);
     const width = 512;
     const height = 256;
-    const pixels = createReflectionColorField(width, height);
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      width,
+      height,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      asset.pixels,
+    );
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.generateMipmap(gl.TEXTURE_2D);
+  }
+
+  function syncReflectionSelection() {
+    const safeStyle = REFLECTION_STYLES[state.reflectionStyle] ? state.reflectionStyle : "prism";
+    const chromeActive = activePreset().mode !== 1;
+    ui.reflectionStyleSelect.value = safeStyle;
+    ui.reflectionStyleCards.forEach((card) => {
+      const active = card.dataset.reflectionStyle === safeStyle;
+      card.classList.toggle("is-active", active);
+      card.setAttribute("aria-pressed", String(active));
+      card.disabled = !chromeActive;
+      card.setAttribute("aria-disabled", String(!chromeActive));
+    });
+  }
+
+  function selectReflectionStyle(styleKey) {
+    if (!REFLECTION_STYLES[styleKey]) return;
+    writePresetSetting("reflectionStyle", styleKey);
+    uploadReflectionStyle(styleKey);
+    syncReflectionSelection();
+    ui.materialAnnouncement.textContent = `已应用 ${REFLECTION_STYLES[styleKey]} 反射场`;
+    render();
   }
 
   function buildNoiseTexture() {
@@ -837,6 +1140,21 @@
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, noiseTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    drawGeneratedAsset("flow", size, size, (output, index, sourceIndex) => {
+      const flowX = pixels[sourceIndex] / 255;
+      const flowY = pixels[sourceIndex + 1] / 255;
+      writeRgb(
+        output,
+        index,
+        10 + flowX * 34 + flowY * 190,
+        8 + flowX * 208 + flowY * 35,
+        24 + flowX * 220 + flowY * 170,
+      );
+    });
+    drawGeneratedAsset("grain", size, size, (output, index, sourceIndex) => {
+      const grain = pixels[sourceIndex + 2];
+      writeRgb(output, index, grain, grain, grain);
+    });
   }
 
   function segmentText(value) {
@@ -1123,11 +1441,16 @@
         }
       }
 
-      // The broad face crown is built from blurred coverage per glyph cell.
-      // It deliberately does not use raw SDF gradients, which are undefined at
-      // stroke medial axes and previously produced seams in complex characters.
-      const bodySigma = Math.max(12, Math.min(46, layout.fontSize * 0.068));
-      const smoothHeight = createGlyphBodyHeight(alphaPixels, width, height, state.glyphs, bodySigma);
+      // Screened/blurred coverage creates a wide shallow face whose stronger
+      // curvature is confined to the edge band.
+      const bodySigma = Math.max(7, Math.min(14, layout.fontSize * 0.018));
+      const smoothHeight = createGlyphBodyHeight(
+        alphaPixels,
+        width,
+        height,
+        state.glyphs,
+        bodySigma,
+      );
       const shadingField = createGlyphShadingDistance(
         signedField,
         width,
@@ -1183,6 +1506,8 @@
       boundsPixels[sizeOffset + 3] = 255;
     });
 
+    updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels, boundsPixels);
+
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, shapeTexture);
@@ -1204,7 +1529,6 @@
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
     ui.renderStatus.textContent = "SDF READY";
     render();
-    scheduleMaterialPreviewRefresh();
   }
 
   function hexToRgb(hex) {
@@ -1247,6 +1571,16 @@
     gl.uniform1f(locations.bodyCrown, state.bodyCrown);
     gl.uniform1f(locations.reflection, state.reflection / 100);
     gl.uniform1f(locations.colorFieldStrength, state.colorField / 100);
+    gl.uniform2f(
+      locations.reflectionOffset,
+      state.reflectionOffsetX / 100,
+      state.reflectionOffsetY / 100,
+    );
+    gl.uniform1f(locations.liquidWarp, state.liquidWarp / 1000);
+    gl.uniform1f(locations.dotPitch, state.dotPitch);
+    gl.uniform1f(locations.glitchStrength, state.glitchStrength / 100);
+    gl.uniform1f(locations.vhsScanlineSpacing, state.vhsScanlineSpacing);
+    gl.uniform1f(locations.vhsScanlineStrength, state.vhsScanlineStrength / 100);
     gl.uniform1f(locations.extrusion, state.extrusion);
     gl.uniform1f(locations.glow, state.glow / 100);
     gl.uniform1f(locations.sceneDetail, state.sceneDetail / 100);
@@ -1255,46 +1589,6 @@
     gl.uniform1f(locations.debugId, state.debugId ? 1 : 0);
     gl.uniform1f(locations.materialMode, activePreset().mode);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
-  }
-
-  let previewRefreshFrame = 0;
-  function scheduleMaterialPreviewRefresh() {
-    window.cancelAnimationFrame(previewRefreshFrame);
-    previewRefreshFrame = window.requestAnimationFrame(refreshMaterialPreviews);
-  }
-
-  function refreshMaterialPreviews() {
-    if (state.glyphs.length === 0 || ui.previewCanvases.size === 0) return;
-    const savedState = {
-      activePreset: state.activePreset,
-      debugId: state.debugId,
-    };
-    MATERIAL_SETTING_KEYS.forEach((key) => {
-      savedState[key] = state[key];
-    });
-
-    PRESET_ORDER.forEach((key) => {
-      const preset = PRESETS[key];
-      state.activePreset = key;
-      state.debugId = false;
-      MATERIAL_SETTING_KEYS.forEach((settingKey) => {
-        state[settingKey] = key === savedState.activePreset
-          ? savedState[settingKey]
-          : preset.settings[settingKey];
-      });
-      render();
-      const preview = ui.previewCanvases.get(key);
-      if (!preview) return;
-      const context = preview.getContext("2d", { alpha: false });
-      context.imageSmoothingEnabled = true;
-      context.imageSmoothingQuality = "high";
-      context.clearRect(0, 0, preview.width, preview.height);
-      context.drawImage(ui.canvas, 0, 0, preview.width, preview.height);
-      preview.classList.add("is-ready");
-    });
-
-    Object.assign(state, savedState);
-    render();
   }
 
   let rebuildTimer = 0;
@@ -1319,6 +1613,14 @@
     ui.bodyCrownInput.value = String(state.bodyCrown);
     ui.reflectionInput.value = String(state.reflection);
     ui.colorFieldInput.value = String(state.colorField);
+    ui.reflectionStyleSelect.value = state.reflectionStyle;
+    ui.reflectionOffsetXInput.value = String(state.reflectionOffsetX);
+    ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
+    ui.liquidWarpInput.value = String(state.liquidWarp);
+    ui.dotPitchInput.value = String(state.dotPitch);
+    ui.glitchStrengthInput.value = String(state.glitchStrength);
+    ui.vhsScanlineSpacingInput.value = String(state.vhsScanlineSpacing);
+    ui.vhsScanlineStrengthInput.value = String(state.vhsScanlineStrength);
     ui.extrusionInput.value = String(state.extrusion);
     ui.glowInput.value = String(state.glow);
     ui.sceneDetailInput.value = String(state.sceneDetail);
@@ -1330,6 +1632,13 @@
     ui.bodyCrownValue.value = String(state.bodyCrown);
     ui.reflectionValue.value = `${state.reflection}%`;
     ui.colorFieldValue.value = `${state.colorField}%`;
+    ui.reflectionOffsetXValue.value = `${state.reflectionOffsetX > 0 ? "+" : ""}${state.reflectionOffsetX}%`;
+    ui.reflectionOffsetYValue.value = `${state.reflectionOffsetY > 0 ? "+" : ""}${state.reflectionOffsetY}%`;
+    ui.liquidWarpValue.value = `${state.liquidWarp}%`;
+    ui.dotPitchValue.value = `${state.dotPitch} PX`;
+    ui.glitchStrengthValue.value = `${state.glitchStrength}%`;
+    ui.vhsScanlineSpacingValue.value = `${state.vhsScanlineSpacing} PX`;
+    ui.vhsScanlineStrengthValue.value = `${state.vhsScanlineStrength}%`;
     ui.extrusionValue.value = `${state.extrusion} PX`;
     ui.glowValue.value = `${state.glow}%`;
     ui.sceneDetailValue.value = `${state.sceneDetail}%`;
@@ -1354,41 +1663,52 @@
     [ui.bodyCrownInput, "bodyCrown", ui.bodyCrownValue, (value) => String(value)],
     [ui.reflectionInput, "reflection", ui.reflectionValue, (value) => `${value}%`],
     [ui.colorFieldInput, "colorField", ui.colorFieldValue, (value) => `${value}%`],
+    [ui.reflectionOffsetXInput, "reflectionOffsetX", ui.reflectionOffsetXValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
+    [ui.reflectionOffsetYInput, "reflectionOffsetY", ui.reflectionOffsetYValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
+    [ui.liquidWarpInput, "liquidWarp", ui.liquidWarpValue, (value) => `${value}%`],
+    [ui.dotPitchInput, "dotPitch", ui.dotPitchValue, (value) => `${value} PX`],
+    [ui.glitchStrengthInput, "glitchStrength", ui.glitchStrengthValue, (value) => `${value}%`],
+    [ui.vhsScanlineSpacingInput, "vhsScanlineSpacing", ui.vhsScanlineSpacingValue, (value) => `${value} PX`],
+    [ui.vhsScanlineStrengthInput, "vhsScanlineStrength", ui.vhsScanlineStrengthValue, (value) => `${value}%`],
     [ui.extrusionInput, "extrusion", ui.extrusionValue, (value) => `${value} PX`],
     [ui.glowInput, "glow", ui.glowValue, (value) => `${value}%`],
     [ui.sceneDetailInput, "sceneDetail", ui.sceneDetailValue, (value) => `${value}%`],
   ].forEach(([input, key, output, format]) => {
     input.addEventListener("input", (event) => {
-      state[key] = Number(event.currentTarget.value);
+      writePresetSetting(key, Number(event.currentTarget.value));
       output.value = format(state[key]);
       render();
-      scheduleMaterialPreviewRefresh();
     });
   });
+  ui.reflectionStyleSelect.addEventListener("change", (event) => {
+    selectReflectionStyle(event.currentTarget.value);
+  });
+  ui.reflectionStyleCards.forEach((card) => {
+    card.addEventListener("click", () => selectReflectionStyle(card.dataset.reflectionStyle));
+  });
   ui.cyanInput.addEventListener("input", (event) => {
-    state.cyan = event.currentTarget.value;
+    writePresetSetting("cyan", event.currentTarget.value);
     render();
-    scheduleMaterialPreviewRefresh();
   });
   ui.pinkInput.addEventListener("input", (event) => {
-    state.pink = event.currentTarget.value;
+    writePresetSetting("pink", event.currentTarget.value);
     render();
-    scheduleMaterialPreviewRefresh();
   });
   ui.materialViewButton.addEventListener("click", () => setDebugView(false));
   ui.idViewButton.addEventListener("click", () => setDebugView(true));
   ui.presetCards.forEach((card) => {
     card.addEventListener("click", () => {
-      if (!card.disabled) selectPreset(card.dataset.material);
+      selectPreset(card.dataset.materialPreset);
     });
   });
   ui.resetButton.addEventListener("click", () => {
-    Object.assign(state, activePreset().settings, { debugId: false });
+    settingsByPreset[state.activePreset] = { ...activePreset().settings };
+    Object.assign(state, settingsByPreset[state.activePreset], { debugId: false });
+    uploadReflectionStyle(state.reflectionStyle);
     syncControls();
     setDebugView(false);
     syncPresetSelection();
     render();
-    scheduleMaterialPreviewRefresh();
   });
   window.addEventListener("resize", render, { passive: true });
 
@@ -1398,7 +1718,8 @@
     : gl.getParameter(gl.RENDERER);
   ui.gpuStatus.textContent = `WEBGL 1 · ${renderer}`;
   buildNoiseTexture();
-  buildReflectionColorField();
+  buildReflectionGallery();
+  uploadReflectionStyle(state.reflectionStyle);
   syncControls();
   syncPresetSelection();
   document.fonts.ready.then(rebuildTextures);
