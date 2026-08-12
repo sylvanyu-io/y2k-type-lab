@@ -27,8 +27,8 @@
   });
   const REFLECTION_SOURCES = Object.freeze({
     rose: "./assets/reflection-fields/rose-citadel.webp?v=1",
-    arctic: "./assets/reflection-fields/ice-citadel.webp",
-    sunset: "./assets/reflection-fields/solar-obsidian.webp",
+    arctic: "./assets/reflection-fields/ice-citadel.webp?v=2",
+    sunset: "./assets/reflection-fields/solar-obsidian.webp?v=2",
   });
   const PRESET_SETTING_KEYS = Object.freeze([...new Set(
     PRESET_ORDER.flatMap((key) => Object.keys(PRESETS[key].settings)),
