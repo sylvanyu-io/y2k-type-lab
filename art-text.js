@@ -79,6 +79,8 @@
     roughnessInput: document.querySelector("#roughnessInput"),
     roughnessValue: document.querySelector("#roughnessValue"),
     baseColorInput: document.querySelector("#baseColorInput"),
+    envCoverageInput: document.querySelector("#envCoverageInput"),
+    envCoverageValue: document.querySelector("#envCoverageValue"),
     reflectionStyleSelect: document.querySelector("#reflectionStyleSelect"),
     reflectionOffsetXInput: document.querySelector("#reflectionOffsetXInput"),
     reflectionOffsetXValue: document.querySelector("#reflectionOffsetXValue"),
@@ -206,6 +208,7 @@
     uniform float uColorFieldStrength;
     uniform float uRoughness;
     uniform vec3 uBaseColor;
+    uniform float uEnvCoverage;
     uniform vec2 uReflectionOffset;
     uniform float uLiquidWarp;
     uniform float uDotPitch;
@@ -391,8 +394,8 @@
     vec2 colorFieldUv(vec3 direction) {
       direction = normalize(direction);
       return vec2(
-        clamp(0.50 + direction.x * 0.48, 0.002, 0.998),
-        clamp(0.50 + direction.y * 0.48, 0.002, 0.998)
+        0.50 + direction.x * 0.48,
+        0.50 + direction.y * 0.48
       );
     }
 
@@ -693,15 +696,21 @@
       ` : ""}
 
       vec3 reflected = reflect(vec3(0.0, 0.0, -1.0), normal);
-      reflected = normalize(vec3(reflected.xy * 1.62, reflected.z));
       vec2 fieldUv = colorFieldUv(reflected);
       float glyphSeed = fract(floor(id * 255.0 + 0.5) * 0.6180339);
       // Preserve a low-frequency per-glyph bias without turning the reflection
       // into a flat vertical decal. Surface normal remains the primary lookup.
       fieldUv += glyphLocal * vec2(0.020, 0.12);
+      // Scale around the lookup centre so a broad, nearly flat glyph face can
+      // traverse more of the environment without distorting its normal. Keep
+      // Y expansion conservative so the field retains a stable horizon.
+      vec2 coverageScale = vec2(
+        uEnvCoverage,
+        1.0 + (uEnvCoverage - 1.0) * 0.35
+      );
+      fieldUv = vec2(0.5) + (fieldUv - vec2(0.5)) * coverageScale;
       fieldUv.x += (glyphSeed - 0.5) * 0.028;
       fieldUv += uReflectionOffset;
-      fieldUv.x = fract(fieldUv.x);
       fieldUv.y = clamp(fieldUv.y, 0.002, 0.998);
 
       // The reflection field owns the detail. Roughness only selects a softer
@@ -892,6 +901,7 @@
     colorFieldStrength: gl.getUniformLocation(program, "uColorFieldStrength"),
     roughness: gl.getUniformLocation(program, "uRoughness"),
     baseColor: gl.getUniformLocation(program, "uBaseColor"),
+    envCoverage: gl.getUniformLocation(program, "uEnvCoverage"),
     reflectionOffset: gl.getUniformLocation(program, "uReflectionOffset"),
     liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
     dotPitch: gl.getUniformLocation(program, "uDotPitch"),
@@ -1676,6 +1686,7 @@
     gl.uniform1f(locations.colorFieldStrength, state.colorField / 100);
     gl.uniform1f(locations.roughness, state.roughness / 100);
     gl.uniform3fv(locations.baseColor, hexToRgb(state.baseColor));
+    gl.uniform1f(locations.envCoverage, state.envCoverage / 100);
     gl.uniform2f(
       locations.reflectionOffset,
       state.reflectionOffsetX / 100,
@@ -1733,6 +1744,7 @@
     ui.colorFieldInput.value = String(state.colorField);
     ui.roughnessInput.value = String(state.roughness);
     ui.baseColorInput.value = state.baseColor;
+    ui.envCoverageInput.value = String(state.envCoverage);
     ui.reflectionStyleSelect.value = state.reflectionStyle;
     ui.reflectionOffsetXInput.value = String(state.reflectionOffsetX);
     ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
@@ -1753,6 +1765,7 @@
     ui.reflectionValue.value = `${state.reflection}%`;
     ui.colorFieldValue.value = `${state.colorField}%`;
     ui.roughnessValue.value = `${state.roughness}%`;
+    ui.envCoverageValue.value = `${state.envCoverage}%`;
     ui.reflectionOffsetXValue.value = `${state.reflectionOffsetX > 0 ? "+" : ""}${state.reflectionOffsetX}%`;
     ui.reflectionOffsetYValue.value = `${state.reflectionOffsetY > 0 ? "+" : ""}${state.reflectionOffsetY}%`;
     ui.liquidWarpValue.value = `${state.liquidWarp}%`;
@@ -1785,6 +1798,7 @@
     [ui.reflectionInput, "reflection", ui.reflectionValue, (value) => `${value}%`],
     [ui.colorFieldInput, "colorField", ui.colorFieldValue, (value) => `${value}%`],
     [ui.roughnessInput, "roughness", ui.roughnessValue, (value) => `${value}%`],
+    [ui.envCoverageInput, "envCoverage", ui.envCoverageValue, (value) => `${value}%`],
     [ui.reflectionOffsetXInput, "reflectionOffsetX", ui.reflectionOffsetXValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.reflectionOffsetYInput, "reflectionOffsetY", ui.reflectionOffsetYValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.liquidWarpInput, "liquidWarp", ui.liquidWarpValue, (value) => `${value}%`],
