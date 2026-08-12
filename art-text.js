@@ -24,9 +24,10 @@
     rose: "ROSE CITADEL",
     arctic: "ICE CITADEL",
     sunset: "SOLAR OBSIDIAN",
+    custom: "CUSTOM URL",
   });
   const REFLECTION_SOURCES = Object.freeze({
-    silk: "./assets/reflection-fields/fantasy-ridge.webp",
+    silk: "./assets/reflection-fields/fantasy-ridge.webp?v=3",
     rose: "./assets/reflection-fields/rose-citadel.webp?v=1",
     arctic: "./assets/reflection-fields/ice-citadel.webp",
     sunset: "./assets/reflection-fields/solar-obsidian.webp",
@@ -84,6 +85,9 @@
     envCoverageInput: document.querySelector("#envCoverageInput"),
     envCoverageValue: document.querySelector("#envCoverageValue"),
     reflectionStyleSelect: document.querySelector("#reflectionStyleSelect"),
+    customReflectionUrlInput: document.querySelector("#customReflectionUrlInput"),
+    applyReflectionUrlButton: document.querySelector("#applyReflectionUrlButton"),
+    customReflectionStatus: document.querySelector("#customReflectionStatus"),
     reflectionOffsetXInput: document.querySelector("#reflectionOffsetXInput"),
     reflectionOffsetXValue: document.querySelector("#reflectionOffsetXValue"),
     reflectionOffsetYInput: document.querySelector("#reflectionOffsetYInput"),
@@ -144,14 +148,15 @@
   function selectPreset(key) {
     const preset = PRESETS[key];
     if (!preset) return;
+    invalidateReflectionRequest();
     state.activePreset = key;
     Object.assign(state, settingsByPreset[key]);
-    uploadReflectionStyle(state.reflectionStyle);
     syncControls();
     syncPresetSelection();
     ui.materialAnnouncement.textContent = `已应用 ${preset.label}`;
     setDebugView(false);
     render();
+    if (preset.mode !== 1) loadPresetReflection(key);
   }
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = TEXTURE_WIDTH;
@@ -996,7 +1001,7 @@
   const boundsTexture = createTexture(gl.TEXTURE2, gl.NEAREST);
   const noiseTexture = createTexture(gl.TEXTURE3, gl.LINEAR, gl.REPEAT);
   const distanceTexture = createTexture(gl.TEXTURE4, gl.NEAREST);
-  const colorFieldTexture = createTexture(gl.TEXTURE5, gl.LINEAR);
+  let colorFieldTexture = createTexture(gl.TEXTURE5, gl.LINEAR);
   const normalTexture = createTexture(gl.TEXTURE6, gl.NEAREST);
   const sceneTexture = createTexture(gl.TEXTURE7, gl.LINEAR);
   const sceneFramebuffer = gl.createFramebuffer();
@@ -1191,53 +1196,273 @@
     }
   }
 
+  const REFLECTION_FIELD_WIDTH = 1024;
+  const REFLECTION_FIELD_HEIGHT = 512;
+  const CUSTOM_REFLECTION_CACHE_LIMIT = 4;
+  const MAX_CUSTOM_URL_LENGTH = 8 * 1024 * 1024;
+  const MAX_REFLECTION_IMAGE_PIXELS = 32 * 1024 * 1024;
   const reflectionFieldCache = new Map();
+  let reflectionRequestId = 0;
 
-  function loadReflectionField(styleKey) {
-    const safeKey = REFLECTION_STYLES[styleKey] ? styleKey : "silk";
-    if (!reflectionFieldCache.has(safeKey)) {
-      reflectionFieldCache.set(safeKey, new Promise((resolve, reject) => {
-        const image = new Image();
-        image.decoding = "async";
-        image.addEventListener("load", () => resolve({ key: safeKey, image }));
-        image.addEventListener("error", () => reject(new Error(`REFLECTION FIELD FAILED: ${safeKey}`)));
-        image.src = REFLECTION_SOURCES[safeKey];
-      }));
-    }
-    return reflectionFieldCache.get(safeKey);
+  function setCustomReflectionStatus(message = "", status = "") {
+    ui.customReflectionStatus.textContent = message;
+    if (status) ui.customReflectionStatus.dataset.state = status;
+    else delete ui.customReflectionStatus.dataset.state;
   }
 
-  function drawReflectionPreview(canvas, image) {
+  function setReflectionRequestBusy(busy) {
+    const control = ui.applyReflectionUrlButton.closest(".reflection-url-control");
+    control.setAttribute("aria-busy", String(busy));
+    ui.applyReflectionUrlButton.textContent = busy ? "LOADING" : "APPLY";
+  }
+
+  function invalidateReflectionRequest() {
+    reflectionRequestId += 1;
+    setReflectionRequestBusy(false);
+    setCustomReflectionStatus();
+  }
+
+  function normalizeCustomReflectionUrl(rawUrl) {
+    const trimmed = rawUrl.trim();
+    if (!trimmed) throw new Error("请输入图片 URL");
+    if (trimmed.length > MAX_CUSTOM_URL_LENGTH) throw new Error("DATA URL 过大（最大 8 MiB）");
+    let parsed;
+    try {
+      parsed = new URL(trimmed, window.location.href);
+    } catch {
+      throw new Error("URL 格式无效");
+    }
+    if (!["http:", "https:", "data:", "blob:"].includes(parsed.protocol)) {
+      throw new Error("仅支持 http(s)、data 或 blob 图片 URL");
+    }
+    if (window.location.protocol === "https:" && parsed.protocol === "http:") {
+      throw new Error("HTTPS 页面不能加载 HTTP 图片");
+    }
+    if (parsed.protocol === "data:"
+      && !/^data:image\/(?:png|jpe?g|webp|avif)(?:;[^,]*)?,/i.test(parsed.href)) {
+      throw new Error("DATA URL 仅支持 PNG、JPEG、WebP 或 AVIF");
+    }
+    return parsed.href;
+  }
+
+  function reflectionDescriptor(styleKey, customUrl = state.customReflectionUrl) {
+    if (styleKey === "custom") {
+      const url = normalizeCustomReflectionUrl(customUrl || "");
+      return {
+        key: "custom",
+        label: REFLECTION_STYLES.custom,
+        url,
+        signature: `custom:${url}`,
+        custom: true,
+      };
+    }
+    if (!REFLECTION_SOURCES[styleKey]) throw new Error("未知反射场");
+    const url = new URL(REFLECTION_SOURCES[styleKey], window.location.href).href;
+    return {
+      key: styleKey,
+      label: REFLECTION_STYLES[styleKey],
+      url,
+      signature: `builtin:${styleKey}:${url}`,
+      custom: false,
+    };
+  }
+
+  function loadReflectionImage(descriptor) {
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      let settled = false;
+      const finish = (callback, value) => {
+        if (settled) return;
+        settled = true;
+        window.clearTimeout(timeoutId);
+        image.onload = null;
+        image.onerror = null;
+        callback(value);
+      };
+      const timeoutId = window.setTimeout(() => {
+        finish(reject, new Error("图片加载超时"));
+        image.src = "";
+      }, 15000);
+      image.decoding = "async";
+      if (descriptor.custom && /^https?:/i.test(descriptor.url)) {
+        image.crossOrigin = "anonymous";
+        image.referrerPolicy = "no-referrer";
+      }
+      image.onload = () => {
+        const width = image.naturalWidth;
+        const height = image.naturalHeight;
+        if (!width || !height) {
+          finish(reject, new Error("图片尺寸无效"));
+          return;
+        }
+        if (width > 8192 || height > 8192 || width * height > MAX_REFLECTION_IMAGE_PIXELS) {
+          finish(reject, new Error("图片尺寸过大（最大 8192px / 32MP）"));
+          return;
+        }
+        finish(resolve, image);
+      };
+      image.onerror = () => finish(
+        reject,
+        new Error(descriptor.custom
+          ? "图片加载失败；公开 URL 需要允许跨域访问（CORS）"
+          : `内置反射场加载失败：${descriptor.label}`),
+      );
+      image.src = descriptor.url;
+    });
+  }
+
+  function normalizeReflectionImage(image) {
+    const canvas = document.createElement("canvas");
+    canvas.width = REFLECTION_FIELD_WIDTH;
+    canvas.height = REFLECTION_FIELD_HEIGHT;
+    const context = canvas.getContext("2d", { alpha: false });
+    context.fillStyle = "#000";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+    const scale = Math.max(canvas.width / image.naturalWidth, canvas.height / image.naturalHeight);
+    const width = image.naturalWidth * scale;
+    const height = image.naturalHeight * scale;
+    context.drawImage(image, (canvas.width - width) * 0.5, (canvas.height - height) * 0.5, width, height);
+    try {
+      context.getImageData(0, 0, 1, 1);
+    } catch {
+      throw new Error("图片无法读取；请确认 URL 允许跨域访问（CORS）");
+    }
+    return canvas;
+  }
+
+  function trimCustomReflectionCache() {
+    const customKeys = [...reflectionFieldCache.keys()].filter((key) => key.startsWith("custom:"));
+    while (customKeys.length > CUSTOM_REFLECTION_CACHE_LIMIT) {
+      reflectionFieldCache.delete(customKeys.shift());
+    }
+  }
+
+  function loadReflectionField(descriptor) {
+    if (reflectionFieldCache.has(descriptor.signature)) {
+      const cached = reflectionFieldCache.get(descriptor.signature);
+      if (descriptor.custom) {
+        reflectionFieldCache.delete(descriptor.signature);
+        reflectionFieldCache.set(descriptor.signature, cached);
+      }
+      return cached;
+    }
+    let pending;
+    pending = loadReflectionImage(descriptor)
+      .then((image) => ({ ...descriptor, canvas: normalizeReflectionImage(image) }))
+      .catch((error) => {
+        if (reflectionFieldCache.get(descriptor.signature) === pending) {
+          reflectionFieldCache.delete(descriptor.signature);
+        }
+        throw error;
+      });
+    reflectionFieldCache.set(descriptor.signature, pending);
+    if (descriptor.custom) trimCustomReflectionCache();
+    return pending;
+  }
+
+  function createReflectionTexture(canvas) {
+    const nextTexture = gl.createTexture();
+    if (!nextTexture) throw new Error("无法创建反射纹理");
+    try {
+      for (let index = 0; index < 8 && gl.getError() !== gl.NO_ERROR; index += 1) {
+        // Clear errors left by unrelated optional paths before checking upload.
+      }
+      gl.activeTexture(gl.TEXTURE5);
+      gl.bindTexture(gl.TEXTURE_2D, nextTexture);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      const error = gl.getError();
+      if (error !== gl.NO_ERROR) throw new Error(`反射纹理上传失败（0x${error.toString(16)}）`);
+      return nextTexture;
+    } catch (error) {
+      gl.deleteTexture(nextTexture);
+      throw error;
+    }
+  }
+
+  function swapReflectionTexture(nextTexture) {
+    const previousTexture = colorFieldTexture;
+    colorFieldTexture = nextTexture;
+    gl.deleteTexture(previousTexture);
+  }
+
+  function drawReflectionPreview(canvas, source) {
     const context = canvas.getContext("2d");
     context.clearRect(0, 0, canvas.width, canvas.height);
     context.imageSmoothingEnabled = true;
     context.imageSmoothingQuality = "high";
-    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    context.drawImage(source, 0, 0, canvas.width, canvas.height);
   }
 
   async function buildReflectionGallery() {
-    await Promise.all(ui.reflectionStyleCards.map(async (card) => {
-      const asset = await loadReflectionField(card.dataset.reflectionStyle);
-      drawReflectionPreview(card.querySelector("canvas"), asset.image);
+    const results = await Promise.allSettled(ui.reflectionStyleCards.map(async (card) => {
+      const descriptor = reflectionDescriptor(card.dataset.reflectionStyle);
+      const asset = await loadReflectionField(descriptor);
+      drawReflectionPreview(card.querySelector("canvas"), asset.canvas);
+      return card;
     }));
+    results.forEach((result, index) => {
+      const card = ui.reflectionStyleCards[index];
+      const failed = result.status === "rejected";
+      card.toggleAttribute("data-load-error", failed);
+      if (failed) card.title = result.reason?.message || "反射场加载失败";
+    });
   }
 
-  async function uploadReflectionStyle(styleKey) {
-    const asset = await loadReflectionField(styleKey);
-    if (state.reflectionStyle !== asset.key) return;
-    gl.activeTexture(gl.TEXTURE5);
-    gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, asset.image);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    render();
+  async function requestReflection(descriptor, {
+    commit,
+    announce = "",
+    loadingMessage = "",
+    successMessage = "",
+    preserveStatus = false,
+  } = {}) {
+    const requestId = ++reflectionRequestId;
+    if (loadingMessage) {
+      setReflectionRequestBusy(true);
+      setCustomReflectionStatus(loadingMessage);
+    } else {
+      setReflectionRequestBusy(false);
+      if (!preserveStatus) setCustomReflectionStatus();
+    }
+    try {
+      const asset = await loadReflectionField(descriptor);
+      if (requestId !== reflectionRequestId) return { status: "stale" };
+      const nextTexture = createReflectionTexture(asset.canvas);
+      if (requestId !== reflectionRequestId) {
+        gl.deleteTexture(nextTexture);
+        return { status: "stale" };
+      }
+      if (commit) commit(asset);
+      swapReflectionTexture(nextTexture);
+      setReflectionRequestBusy(false);
+      if (successMessage) setCustomReflectionStatus(successMessage, "success");
+      else if (!preserveStatus) setCustomReflectionStatus();
+      syncReflectionSelection();
+      if (announce) ui.materialAnnouncement.textContent = announce;
+      render();
+      return { status: "applied", asset };
+    } catch (error) {
+      if (requestId !== reflectionRequestId) return { status: "stale" };
+      setReflectionRequestBusy(false);
+      setCustomReflectionStatus(error.message || "反射场加载失败", "error");
+      syncReflectionSelection();
+      render();
+      return { status: "failed", error };
+    }
   }
 
   function syncReflectionSelection() {
-    const safeStyle = REFLECTION_STYLES[state.reflectionStyle] ? state.reflectionStyle : "silk";
+    const firstBuiltinStyle = Object.keys(REFLECTION_SOURCES)[0] || "";
+    const safeStyle = state.reflectionStyle === "custom" || REFLECTION_SOURCES[state.reflectionStyle]
+      ? state.reflectionStyle
+      : firstBuiltinStyle;
     const chromeActive = activePreset().mode !== 1;
     ui.reflectionStyleSelect.value = safeStyle;
     ui.reflectionStyleCards.forEach((card) => {
@@ -1249,13 +1474,98 @@
     });
   }
 
+  function getPresetFallbackReflectionStyle() {
+    // Liquid's canonical fallback is ROSE CITADEL. Other chrome presets keep
+    // their own built-in default when it still exists. This deliberately does
+    // not assume any retired reflection field remains registered.
+    if (state.activePreset === "liquid" && REFLECTION_SOURCES.rose) return "rose";
+    const presetDefault = activePreset().settings.reflectionStyle;
+    if (REFLECTION_SOURCES[presetDefault]) return presetDefault;
+    return REFLECTION_SOURCES.rose ? "rose" : (Object.keys(REFLECTION_SOURCES)[0] || "");
+  }
+
   async function selectReflectionStyle(styleKey) {
-    if (!REFLECTION_STYLES[styleKey]) return;
-    writePresetSetting("reflectionStyle", styleKey);
-    await uploadReflectionStyle(styleKey);
+    if (styleKey === "custom") {
+      invalidateReflectionRequest();
+      syncReflectionSelection();
+      setCustomReflectionStatus("输入图片 URL 后点击 APPLY");
+      ui.customReflectionUrlInput.focus();
+      return;
+    }
+    if (!REFLECTION_SOURCES[styleKey]) return;
+    // The native select has already changed visually. Keep the committed
+    // style selected until the candidate image has loaded and uploaded.
     syncReflectionSelection();
-    ui.materialAnnouncement.textContent = `已应用 ${REFLECTION_STYLES[styleKey]} 反射场`;
-    render();
+    const descriptor = reflectionDescriptor(styleKey);
+    await requestReflection(descriptor, {
+      commit: () => writePresetSetting("reflectionStyle", styleKey),
+      announce: `已应用 ${REFLECTION_STYLES[styleKey]} 反射场`,
+    });
+  }
+
+  async function applyCustomReflectionUrl() {
+    // A rejected APPLY is still the newest user intent and must supersede an
+    // older in-flight request before validation starts.
+    invalidateReflectionRequest();
+    let descriptor;
+    try {
+      descriptor = reflectionDescriptor("custom", ui.customReflectionUrlInput.value);
+    } catch (error) {
+      setCustomReflectionStatus(error.message, "error");
+      syncReflectionSelection();
+      return;
+    }
+    await requestReflection(descriptor, {
+      loadingMessage: "正在加载并处理 1024 × 512 反射场…",
+      successMessage: "自定义反射场已应用",
+      announce: "已应用自定义反射场",
+      commit: (asset) => {
+        writePresetSetting("customReflectionUrl", asset.url);
+        writePresetSetting("reflectionStyle", "custom");
+        ui.customReflectionUrlInput.value = asset.url;
+      },
+    });
+  }
+
+  async function loadPresetReflection(presetKey) {
+    if (state.activePreset !== presetKey || activePreset().mode === 1) return;
+    let descriptor;
+    try {
+      descriptor = reflectionDescriptor(state.reflectionStyle, state.customReflectionUrl);
+    } catch (error) {
+      setCustomReflectionStatus(error.message, "error");
+      syncReflectionSelection();
+      return;
+    }
+    const result = await requestReflection(descriptor, {
+      loadingMessage: descriptor.custom ? "正在恢复自定义反射场…" : "",
+      successMessage: descriptor.custom ? "自定义反射场已恢复" : "",
+    });
+    if (result.status !== "failed"
+      || !descriptor.custom
+      || state.activePreset !== presetKey
+      || state.reflectionStyle !== "custom") return;
+
+    const originalError = result.error?.message || "自定义反射场不可用";
+    const fallbackStyle = getPresetFallbackReflectionStyle();
+    if (!fallbackStyle) return;
+    const fallback = await requestReflection(reflectionDescriptor(fallbackStyle), {
+      preserveStatus: true,
+      commit: () => writePresetSetting("reflectionStyle", fallbackStyle),
+    });
+    if (fallback.status === "applied") {
+      syncControls();
+      syncReflectionSelection();
+      setCustomReflectionStatus(
+        `${originalError}；已回退 ${REFLECTION_STYLES[fallbackStyle]}`,
+        "error",
+      );
+    } else if (fallback.status === "failed") {
+      setCustomReflectionStatus(
+        `${originalError}；回退失败：${fallback.error?.message || "反射场不可用"}`,
+        "error",
+      );
+    }
   }
 
   function buildNoiseTexture() {
@@ -1805,6 +2115,7 @@
     ui.baseColorInput.value = state.baseColor;
     ui.envCoverageInput.value = String(state.envCoverage);
     ui.reflectionStyleSelect.value = state.reflectionStyle;
+    ui.customReflectionUrlInput.value = state.customReflectionUrl || "";
     ui.reflectionOffsetXInput.value = String(state.reflectionOffsetX);
     ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
     ui.liquidWarpInput.value = String(state.liquidWarp);
@@ -1878,6 +2189,12 @@
   ui.reflectionStyleSelect.addEventListener("change", (event) => {
     selectReflectionStyle(event.currentTarget.value);
   });
+  ui.applyReflectionUrlButton.addEventListener("click", applyCustomReflectionUrl);
+  ui.customReflectionUrlInput.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    applyCustomReflectionUrl();
+  });
   ui.reflectionStyleCards.forEach((card) => {
     card.addEventListener("click", () => selectReflectionStyle(card.dataset.reflectionStyle));
   });
@@ -1901,13 +2218,13 @@
     });
   });
   ui.resetButton.addEventListener("click", () => {
+    invalidateReflectionRequest();
     settingsByPreset[state.activePreset] = { ...activePreset().settings };
     Object.assign(state, settingsByPreset[state.activePreset], { debugId: false });
-    uploadReflectionStyle(state.reflectionStyle);
     syncControls();
-    setDebugView(false);
     syncPresetSelection();
-    render();
+    setDebugView(false);
+    if (activePreset().mode !== 1) loadPresetReflection(state.activePreset);
   });
   window.addEventListener("resize", render, { passive: true });
 
@@ -1921,11 +2238,8 @@
     ui.renderError.hidden = false;
     ui.renderError.textContent = error.message;
   });
-  uploadReflectionStyle(state.reflectionStyle).catch((error) => {
-    ui.renderError.hidden = false;
-    ui.renderError.textContent = error.message;
-  });
   syncControls();
   syncPresetSelection();
+  loadPresetReflection(state.activePreset);
   document.fonts.ready.then(rebuildTextures);
 })();

@@ -235,7 +235,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .control-section { padding: 20px 0; border-bottom: 1px solid var(--line); }
 .section-title { display: flex; align-items: center; justify-content: space-between; color: var(--magenta); font: 700 13px/1.2 var(--mono); letter-spacing: 0.08em; }
 .section-title em { color: var(--muted); font-style: normal; }
-.text-control, .range-control, .select-control, .offset-controls, .color-control { display: block; margin-top: 16px; }
+.text-control, .range-control, .select-control, .offset-controls, .color-control, .reflection-url-control { display: block; margin-top: 16px; }
 .range-control[hidden] { display: none; }
 .text-control > span { display: block; margin-bottom: 9px; color: var(--muted); font: 700 12px/1 var(--mono); }
 #textInput {
@@ -268,6 +268,32 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   font: 700 12px/1 var(--mono);
   letter-spacing: 0.035em;
 }
+.reflection-url-control > label { display: block; margin-bottom: 8px; color: var(--muted); font: 700 12px/1 var(--mono); }
+.reflection-url-control > div { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; }
+.reflection-url-control input {
+  min-width: 0;
+  height: 42px;
+  padding: 0 10px;
+  border: 1px solid var(--line-hot);
+  border-radius: 3px;
+  color: var(--text);
+  background: #0b0a0e;
+  font: 600 11px/1 var(--mono);
+}
+.reflection-url-control button {
+  min-width: 66px;
+  border: 1px solid var(--cyan);
+  border-radius: 3px;
+  color: var(--cyan);
+  background: rgba(57,245,255,0.06);
+  font: 750 11px/1 var(--mono);
+  letter-spacing: 0.05em;
+  cursor: pointer;
+}
+.reflection-url-control button:disabled { cursor: wait; opacity: 0.46; }
+.reflection-url-control p { min-height: 14px; margin: 6px 0 0; color: var(--muted); font: 600 10px/1.35 var(--mono); overflow-wrap: anywhere; }
+.reflection-url-control p[data-state="error"] { color: #ff718f; }
+.reflection-url-control p[data-state="success"] { color: var(--cyan); }
 .offset-controls { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .offset-controls label > span { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 650 11px/1.2 var(--mono); }
 .offset-controls b { color: var(--text); font-weight: 650; }
