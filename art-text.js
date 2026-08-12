@@ -28,6 +28,7 @@
     activePreset: DEFAULT_PRESET_KEY,
     ...PRESETS[DEFAULT_PRESET_KEY].settings,
   });
+  const MATERIAL_SETTING_KEYS = Object.freeze(Object.keys(PRESETS[DEFAULT_PRESET_KEY].settings));
 
   const ui = {
     canvas: document.querySelector("#artCanvas"),
@@ -37,6 +38,7 @@
     buildTime: document.querySelector("#buildTime"),
     glyphReadout: document.querySelector("#glyphReadout"),
     inspectorMaterialName: document.querySelector("#inspectorMaterialName"),
+    materialAnnouncement: document.querySelector("#materialAnnouncement"),
     presetCards: [...document.querySelectorAll(".preset-card[data-material]")],
     previewCanvases: new Map(
       [...document.querySelectorAll("canvas[data-material-preview]")]
@@ -95,8 +97,10 @@
     if (applyDefaults) Object.assign(state, preset.settings);
     syncControls();
     syncPresetSelection();
+    ui.materialAnnouncement.textContent = `已应用 ${preset.label}`;
     setDebugView(false);
     render();
+    scheduleMaterialPreviewRefresh();
   }
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = TEXTURE_WIDTH;
@@ -1200,6 +1204,7 @@
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
     ui.renderStatus.textContent = "SDF READY";
     render();
+    scheduleMaterialPreviewRefresh();
   }
 
   function hexToRgb(hex) {
@@ -1250,6 +1255,46 @@
     gl.uniform1f(locations.debugId, state.debugId ? 1 : 0);
     gl.uniform1f(locations.materialMode, activePreset().mode);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  let previewRefreshFrame = 0;
+  function scheduleMaterialPreviewRefresh() {
+    window.cancelAnimationFrame(previewRefreshFrame);
+    previewRefreshFrame = window.requestAnimationFrame(refreshMaterialPreviews);
+  }
+
+  function refreshMaterialPreviews() {
+    if (state.glyphs.length === 0 || ui.previewCanvases.size === 0) return;
+    const savedState = {
+      activePreset: state.activePreset,
+      debugId: state.debugId,
+    };
+    MATERIAL_SETTING_KEYS.forEach((key) => {
+      savedState[key] = state[key];
+    });
+
+    PRESET_ORDER.forEach((key) => {
+      const preset = PRESETS[key];
+      state.activePreset = key;
+      state.debugId = false;
+      MATERIAL_SETTING_KEYS.forEach((settingKey) => {
+        state[settingKey] = key === savedState.activePreset
+          ? savedState[settingKey]
+          : preset.settings[settingKey];
+      });
+      render();
+      const preview = ui.previewCanvases.get(key);
+      if (!preview) return;
+      const context = preview.getContext("2d", { alpha: false });
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+      context.clearRect(0, 0, preview.width, preview.height);
+      context.drawImage(ui.canvas, 0, 0, preview.width, preview.height);
+      preview.classList.add("is-ready");
+    });
+
+    Object.assign(state, savedState);
+    render();
   }
 
   let rebuildTimer = 0;
@@ -1317,15 +1362,18 @@
       state[key] = Number(event.currentTarget.value);
       output.value = format(state[key]);
       render();
+      scheduleMaterialPreviewRefresh();
     });
   });
   ui.cyanInput.addEventListener("input", (event) => {
     state.cyan = event.currentTarget.value;
     render();
+    scheduleMaterialPreviewRefresh();
   });
   ui.pinkInput.addEventListener("input", (event) => {
     state.pink = event.currentTarget.value;
     render();
+    scheduleMaterialPreviewRefresh();
   });
   ui.materialViewButton.addEventListener("click", () => setDebugView(false));
   ui.idViewButton.addEventListener("click", () => setDebugView(true));
@@ -1340,6 +1388,7 @@
     setDebugView(false);
     syncPresetSelection();
     render();
+    scheduleMaterialPreviewRefresh();
   });
   window.addEventListener("resize", render, { passive: true });
 

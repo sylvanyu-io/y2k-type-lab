@@ -14,6 +14,17 @@
 }
 
 * { box-sizing: border-box; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 html { min-width: 320px; background: var(--shell); color-scheme: dark; }
 body {
   margin: 0;
@@ -132,6 +143,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .preset-card.is-active { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(57,245,255,0.16), 0 0 22px rgba(57,245,255,0.06); }
 .preset-card.is-active .preset-meta em { color: var(--text); }
 .preset-preview {
+  position: relative;
   display: grid;
   height: 92px;
   place-items: center;
@@ -141,6 +153,19 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   font-weight: 900;
   letter-spacing: -0.06em;
 }
+.preset-fallback { position: relative; z-index: 0; }
+.preset-preview canvas {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  object-fit: cover;
+  transition: opacity 180ms ease-out;
+}
+.preset-preview canvas.is-ready { opacity: 1; }
 .dot-preview {
   color: var(--cyan);
   background: repeating-linear-gradient(0deg, #07080d 0 3px, #17051d 3px 4px);
@@ -283,8 +308,12 @@ input[type="color"] { width: 20px; height: 20px; padding: 0; border: 0; border-r
   .canvas-toolbar { grid-template-columns: 1fr auto; }
   .canvas-toolbar > span:last-child { display: none; }
   .artboard-frame { padding: 12px; }
-  .preset-rail { grid-template-columns: 1fr; }
-  .preset-rail .rail-title, .technology-note { grid-column: auto; }
+  .preset-rail { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .preset-rail .rail-title, .technology-note { grid-column: 1 / -1; }
+  .preset-preview { height: clamp(58px, 18vw, 78px); font-size: 18px; }
+  .preset-meta { align-items: flex-start; gap: 4px; padding: 7px 6px; }
+  .preset-meta b { line-height: 1.25; }
+  .preset-meta em { display: none; }
   .inspector { grid-template-columns: 1fr; }
   .inspector-title { grid-column: auto; }
   .canvas-status span:nth-child(2) { display: none; }

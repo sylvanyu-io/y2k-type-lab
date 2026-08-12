@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Y2K Type Material Lab</title>
-    <link rel="stylesheet" href="./art-text.css?v=1" />
+    <link rel="stylesheet" href="./art-text.css?v=2" />
   </head>
   <body>
     <main class="app-shell">
@@ -36,19 +36,30 @@
           </div>
 
           <button class="preset-card" type="button" data-material="dot" aria-pressed="false">
-            <span class="preset-preview dot-preview">GLITCH</span>
+            <span class="preset-preview dot-preview">
+              <span class="preset-fallback">GLITCH</span>
+              <canvas width="320" height="180" data-material-preview="dot" aria-hidden="true"></canvas>
+            </span>
             <span class="preset-meta"><b>DOT//GLITCH</b><em>SELECT</em></span>
           </button>
 
           <button class="preset-card is-active" type="button" data-material="liquid" aria-pressed="true">
-            <span class="preset-preview chrome-preview">CHROME</span>
+            <span class="preset-preview chrome-preview">
+              <span class="preset-fallback">CHROME</span>
+              <canvas width="320" height="180" data-material-preview="liquid" aria-hidden="true"></canvas>
+            </span>
             <span class="preset-meta"><b>LIQUID//CHROME</b><em>ACTIVE</em></span>
           </button>
 
           <button class="preset-card" type="button" data-material="vhs" aria-pressed="false">
-            <span class="preset-preview vhs-preview">Y2K</span>
+            <span class="preset-preview vhs-preview">
+              <span class="preset-fallback">Y2K</span>
+              <canvas width="320" height="180" data-material-preview="vhs" aria-hidden="true"></canvas>
+            </span>
             <span class="preset-meta"><b>VHS//CHROME</b><em>SELECT</em></span>
           </button>
+
+          <p class="sr-only" id="materialAnnouncement" aria-live="polite"></p>
 
           <div class="technology-note">
             <span>RENDER BASE</span>
@@ -156,6 +167,6 @@ CHROME</textarea>
 
     <script src="./art-text-presets.js?v=1"></script>
     <script src="./art-text-fields.js?v=4"></script>
-    <script src="./art-text.js?v=37"></script>
+    <script src="./art-text.js?v=38"></script>
   </body>
 </html>
