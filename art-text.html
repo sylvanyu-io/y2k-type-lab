@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Y2K Type Material Lab</title>
-    <link rel="stylesheet" href="./art-text.css?v=2" />
+    <link rel="stylesheet" href="./art-text.css?v=4" />
   </head>
   <body>
     <main class="app-shell">
@@ -29,43 +29,70 @@
       </header>
 
       <section class="editor-grid">
-        <aside class="preset-rail" aria-label="艺术字预设">
+        <aside class="preset-rail" aria-label="材质预设与生成纹理">
           <div class="rail-title">
             <span>01</span>
-            <div><strong>MATERIALS</strong><small>3 LIVE SURFACES</small></div>
+            <div><strong>SURFACES</strong><small>SELECT A MATERIAL</small></div>
           </div>
 
-          <button class="preset-card" type="button" data-material="dot" aria-pressed="false">
-            <span class="preset-preview dot-preview">
-              <span class="preset-fallback">GLITCH</span>
-              <canvas width="320" height="180" data-material-preview="dot" aria-hidden="true"></canvas>
-            </span>
-            <span class="preset-meta"><b>DOT//GLITCH</b><em>SELECT</em></span>
-          </button>
-
-          <button class="preset-card is-active" type="button" data-material="liquid" aria-pressed="true">
-            <span class="preset-preview chrome-preview">
-              <span class="preset-fallback">CHROME</span>
-              <canvas width="320" height="180" data-material-preview="liquid" aria-hidden="true"></canvas>
-            </span>
-            <span class="preset-meta"><b>LIQUID//CHROME</b><em>ACTIVE</em></span>
-          </button>
-
-          <button class="preset-card" type="button" data-material="vhs" aria-pressed="false">
-            <span class="preset-preview vhs-preview">
-              <span class="preset-fallback">Y2K</span>
-              <canvas width="320" height="180" data-material-preview="vhs" aria-hidden="true"></canvas>
-            </span>
-            <span class="preset-meta"><b>VHS//CHROME</b><em>SELECT</em></span>
-          </button>
+          <div class="surface-switcher" role="group" aria-label="材质预设">
+            <button class="surface-button" type="button" data-material-preset="dot" aria-pressed="false">
+              <b>DOT</b><span>GLITCH</span>
+            </button>
+            <button class="surface-button is-active" type="button" data-material-preset="liquid" aria-pressed="true">
+              <b>LIQUID</b><span>CHROME</span>
+            </button>
+            <button class="surface-button" type="button" data-material-preset="vhs" aria-pressed="false">
+              <b>VHS</b><span>CHROME</span>
+            </button>
+          </div>
 
           <p class="sr-only" id="materialAnnouncement" aria-live="polite"></p>
 
-          <div class="technology-note">
-            <span>RENDER BASE</span>
-            <strong>ONE TEXT QUAD</strong>
-            <p>SDF + GLYPH ID<br />BOUNDS LUT</p>
-          </div>
+          <section class="reflection-library" aria-labelledby="reflectionLibraryTitle">
+            <header class="asset-library-title">
+              <div><strong id="reflectionLibraryTitle">REFLECTION FIELDS</strong><small>SELECT A LIGHT SHAPE</small></div>
+              <span>06</span>
+            </header>
+            <div class="reflection-grid">
+              <button class="reflection-card is-active" type="button" data-reflection-style="prism" aria-pressed="true">
+                <canvas width="224" height="126" aria-hidden="true"></canvas><span>PRISM CUT</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="silk" aria-pressed="false">
+                <canvas width="224" height="126" aria-hidden="true"></canvas><span>LIQUID SILK</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="arctic" aria-pressed="false">
+                <canvas width="224" height="126" aria-hidden="true"></canvas><span>ARCTIC BLUE</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="magenta" aria-pressed="false">
+                <canvas width="224" height="126" aria-hidden="true"></canvas><span>HOT MAGENTA</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="sunset" aria-pressed="false">
+                <canvas width="224" height="126" aria-hidden="true"></canvas><span>PEARL SUNSET</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="tunnel" aria-pressed="false">
+                <canvas width="224" height="126" aria-hidden="true"></canvas><span>NEON TUNNEL</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="asset-library" aria-labelledby="assetLibraryTitle">
+            <header class="asset-library-title">
+              <div><strong id="assetLibraryTitle">RUNTIME MAPS</strong><small>LIVE GLYPH BUFFERS</small></div>
+              <span>09 VIEWS</span>
+            </header>
+            <div class="asset-grid">
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="flow" aria-hidden="true"></canvas><figcaption><b>FLOW NOISE</b><span>RG8 · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="grain" aria-hidden="true"></canvas><figcaption><b>FILM GRAIN</b><span>B8 · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="coverage" aria-hidden="true"></canvas><figcaption><b>COVERAGE</b><span>B8</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="body" aria-hidden="true"></canvas><figcaption><b>BODY HEIGHT</b><span>RG PACKED · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="clip-sdf" aria-hidden="true"></canvas><figcaption><b>CLIP SDF</b><span>RG PACKED · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="shading-sdf" aria-hidden="true"></canvas><figcaption><b>SHADING SDF</b><span>BA PACKED · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="normal" aria-hidden="true"></canvas><figcaption><b>NORMAL XY</b><span>RGBA PACKED · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b>GLYPH ID + CELLS</b><span>R8 · VIS</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="bounds-lut" aria-hidden="true"></canvas><figcaption><b>BOUNDS LUT</b><span>256×2 · VIS</span></figcaption></figure>
+            </div>
+          </section>
         </aside>
 
         <section class="canvas-column" aria-label="艺术字画布">
@@ -119,21 +146,62 @@ CHROME</textarea>
 
           <section class="control-section">
             <div class="section-title"><span>MATERIAL</span><em>02</em></div>
-            <label class="range-control" for="edgeWidthInput">
+            <label class="range-control" for="edgeWidthInput" data-materials="liquid vhs">
               <span><b>EDGE ROLL</b><output id="edgeWidthValue">8 PX</output></span>
               <input id="edgeWidthInput" type="range" min="3" max="14" value="8" step="1" />
             </label>
-            <label class="range-control" for="bodyCrownInput">
+            <label class="range-control" for="bodyCrownInput" data-materials="liquid vhs">
               <span><b>BODY CROWN</b><output id="bodyCrownValue">16</output></span>
               <input id="bodyCrownInput" type="range" min="6" max="24" value="16" step="1" />
             </label>
-            <label class="range-control" for="reflectionInput">
-              <span><b>REFLECTION</b><output id="reflectionValue">88%</output></span>
+            <label class="select-control" for="reflectionStyleSelect" data-materials="liquid vhs">
+              <span>REFLECTION FIELD</span>
+              <select id="reflectionStyleSelect">
+                <option value="prism">PRISM CUT</option>
+                <option value="silk">LIQUID SILK</option>
+                <option value="arctic">ARCTIC BLUE</option>
+                <option value="magenta">HOT MAGENTA</option>
+                <option value="sunset">PEARL SUNSET</option>
+                <option value="tunnel">NEON TUNNEL</option>
+              </select>
+            </label>
+            <div class="offset-controls" data-materials="liquid vhs">
+              <label for="reflectionOffsetXInput">
+                <span><b>OFFSET X</b><output id="reflectionOffsetXValue">0%</output></span>
+                <input id="reflectionOffsetXInput" type="range" min="-50" max="50" value="0" step="1" />
+              </label>
+              <label for="reflectionOffsetYInput">
+                <span><b>OFFSET Y</b><output id="reflectionOffsetYValue">0%</output></span>
+                <input id="reflectionOffsetYInput" type="range" min="-35" max="35" value="0" step="1" />
+              </label>
+            </div>
+            <label class="range-control" for="reflectionInput" data-materials="liquid vhs">
+              <span><b>REFLECTIVITY</b><output id="reflectionValue">88%</output></span>
               <input id="reflectionInput" type="range" min="0" max="100" value="88" step="1" />
             </label>
-            <label class="range-control" for="colorFieldInput">
-              <span><b>COLOR FIELD</b><output id="colorFieldValue">82%</output></span>
+            <label class="range-control" for="colorFieldInput" data-materials="liquid vhs">
+              <span><b>FIELD STRENGTH</b><output id="colorFieldValue">82%</output></span>
               <input id="colorFieldInput" type="range" min="0" max="100" value="82" step="1" />
+            </label>
+            <label class="range-control" for="liquidWarpInput" data-materials="liquid">
+              <span><b>LIQUID WARP</b><output id="liquidWarpValue">16%</output></span>
+              <input id="liquidWarpInput" type="range" min="0" max="40" value="16" step="1" />
+            </label>
+            <label class="range-control" for="dotPitchInput" data-materials="dot">
+              <span><b>DOT SIZE</b><output id="dotPitchValue">7 PX</output></span>
+              <input id="dotPitchInput" type="range" min="4" max="12" value="7" step="1" />
+            </label>
+            <label class="range-control" for="glitchStrengthInput" data-materials="dot">
+              <span><b>GLITCH</b><output id="glitchStrengthValue">55%</output></span>
+              <input id="glitchStrengthInput" type="range" min="0" max="100" value="55" step="1" />
+            </label>
+            <label class="range-control" for="vhsScanlineSpacingInput" data-materials="vhs">
+              <span><b>SCANLINE GAP</b><output id="vhsScanlineSpacingValue">32 PX</output></span>
+              <input id="vhsScanlineSpacingInput" type="range" min="8" max="64" value="32" step="1" />
+            </label>
+            <label class="range-control" for="vhsScanlineStrengthInput" data-materials="vhs">
+              <span><b>SCANLINE</b><output id="vhsScanlineStrengthValue">7%</output></span>
+              <input id="vhsScanlineStrengthInput" type="range" min="0" max="30" value="7" step="1" />
             </label>
             <label class="range-control" for="extrusionInput">
               <span><b>DEPTH</b><output id="extrusionValue">8 PX</output></span>
@@ -165,8 +233,8 @@ CHROME</textarea>
       </section>
     </main>
 
-    <script src="./art-text-presets.js?v=1"></script>
-    <script src="./art-text-fields.js?v=4"></script>
-    <script src="./art-text.js?v=38"></script>
+    <script src="./art-text-presets.js?v=5"></script>
+    <script src="./art-text-fields.js?v=11"></script>
+    <script src="./art-text.js?v=51"></script>
   </body>
 </html>
