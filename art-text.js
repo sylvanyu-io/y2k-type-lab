@@ -4,20 +4,29 @@
   const TEXTURE_WIDTH = 1600;
   const TEXTURE_HEIGHT = 900;
   const SDF_SPREAD = 72;
+  const SHADING_SDF_SPREAD = 24;
   const BODY_INFLATE = 3.5;
-  const BODY_RADIUS = 16;
-  const BODY_BLUR_RADIUS = 6;
   const INF = 1e20;
   const DISPLAY_FONT = '"Arial Rounded MT Bold", "Yuanti SC", "Hiragino Maru Gothic ProN", "Avenir Next", "PingFang SC", sans-serif';
+  const DEBUG_SURFACE = new URLSearchParams(window.location.search).get("debug") || "";
+  const {
+    createGlyphBodyHeight,
+    createGlyphShadingDistance,
+    createNoiseField,
+    createReflectionColorField,
+  } = window.ArtTextFields;
 
   const DEFAULTS = Object.freeze({
     text: "Y2K\nCHROME",
     tracking: 4,
     lineHeight: 0.88,
-    bevel: 14,
-    reflection: 78,
-    extrusion: 9,
-    glow: 28,
+    edgeWidth: 8,
+    bodyCrown: 16,
+    reflection: 88,
+    colorField: 82,
+    extrusion: 8,
+    glow: 20,
+    sceneDetail: 68,
     cyan: "#39f5ff",
     pink: "#ff2bd6",
   });
@@ -37,14 +46,20 @@
     trackingValue: document.querySelector("#trackingValue"),
     lineHeightInput: document.querySelector("#lineHeightInput"),
     lineHeightValue: document.querySelector("#lineHeightValue"),
-    bevelInput: document.querySelector("#bevelInput"),
-    bevelValue: document.querySelector("#bevelValue"),
+    edgeWidthInput: document.querySelector("#edgeWidthInput"),
+    edgeWidthValue: document.querySelector("#edgeWidthValue"),
+    bodyCrownInput: document.querySelector("#bodyCrownInput"),
+    bodyCrownValue: document.querySelector("#bodyCrownValue"),
     reflectionInput: document.querySelector("#reflectionInput"),
     reflectionValue: document.querySelector("#reflectionValue"),
+    colorFieldInput: document.querySelector("#colorFieldInput"),
+    colorFieldValue: document.querySelector("#colorFieldValue"),
     extrusionInput: document.querySelector("#extrusionInput"),
     extrusionValue: document.querySelector("#extrusionValue"),
     glowInput: document.querySelector("#glowInput"),
     glowValue: document.querySelector("#glowValue"),
+    sceneDetailInput: document.querySelector("#sceneDetailInput"),
+    sceneDetailValue: document.querySelector("#sceneDetailValue"),
     cyanInput: document.querySelector("#cyanInput"),
     pinkInput: document.querySelector("#pinkInput"),
   };
@@ -97,12 +112,17 @@
     uniform sampler2D uIdTexture;
     uniform sampler2D uBoundsTexture;
     uniform sampler2D uNoiseTexture;
+    uniform sampler2D uColorFieldTexture;
+    uniform sampler2D uNormalTexture;
     uniform vec2 uTextureSize;
     uniform float uSpread;
-    uniform float uBevel;
+    uniform float uEdgeWidth;
+    uniform float uBodyCrown;
     uniform float uReflection;
+    uniform float uColorFieldStrength;
     uniform float uExtrusion;
     uniform float uGlow;
+    uniform float uSceneDetail;
     uniform vec3 uCyan;
     uniform vec3 uPink;
     uniform float uDebugId;
@@ -112,19 +132,16 @@
       return (integerBytes.x * 256.0 + integerBytes.y) / 65535.0;
     }
 
-    float distanceTap(vec2 uv) {
-      vec2 encodedBytes = texture2D(uDistanceTexture, uv).rg;
-      vec2 bytes = floor(encodedBytes * 255.0 + 0.5);
-      return (bytes.x * 256.0 + bytes.y) / 65535.0;
+    vec2 distanceTap(vec2 uv) {
+      vec4 surfaceTexel = texture2D(uDistanceTexture, uv);
+      vec4 distanceBytes = floor(surfaceTexel * 255.0 + 0.5);
+      return vec2(
+        (distanceBytes.r * 256.0 + distanceBytes.g) / 65535.0,
+        (distanceBytes.b * 256.0 + distanceBytes.a) / 65535.0
+      );
     }
 
-    float heightTap(vec2 uv) {
-      vec2 encodedBytes = texture2D(uDistanceTexture, uv).ba;
-      vec2 bytes = floor(encodedBytes * 255.0 + 0.5);
-      return (bytes.x * 256.0 + bytes.y) / 65535.0;
-    }
-
-    float sampleDistance16(vec2 uv) {
+    vec2 sampleDistancePair16(vec2 uv) {
       vec2 pixel = uv * uTextureSize - 0.5;
       vec2 base = floor(pixel);
       vec2 fraction = fract(pixel);
@@ -139,7 +156,14 @@
       );
     }
 
-    float sampleHeight16(vec2 uv) {
+    vec2 shapeTap(vec2 uv) {
+      vec4 packedShape = texture2D(uShapeTexture, uv);
+      vec2 heightBytes = floor(packedShape.rg * 255.0 + 0.5);
+      float bodyHeight = (heightBytes.x * 256.0 + heightBytes.y) / 65535.0;
+      return vec2(bodyHeight, packedShape.b);
+    }
+
+    vec2 sampleShapeData16(vec2 uv) {
       vec2 pixel = uv * uTextureSize - 0.5;
       vec2 base = floor(pixel);
       vec2 fraction = fract(pixel);
@@ -148,10 +172,39 @@
       vec2 uv01 = (base + vec2(0.5, 1.5)) / uTextureSize;
       vec2 uv11 = (base + vec2(1.5, 1.5)) / uTextureSize;
       return mix(
-        mix(heightTap(uv00), heightTap(uv10), fraction.x),
-        mix(heightTap(uv01), heightTap(uv11), fraction.x),
+        mix(shapeTap(uv00), shapeTap(uv10), fraction.x),
+        mix(shapeTap(uv01), shapeTap(uv11), fraction.x),
         fraction.y
       );
+    }
+
+    vec2 normalTap(vec2 uv) {
+      vec4 packedNormal = texture2D(uNormalTexture, uv);
+      vec4 bytes = floor(packedNormal * 255.0 + 0.5);
+      vec2 encoded = vec2(
+        (bytes.r * 256.0 + bytes.g) / 65535.0,
+        (bytes.b * 256.0 + bytes.a) / 65535.0
+      );
+      return (encoded * 2.0 - 1.0) * 1.25;
+    }
+
+    vec2 sampleEdgeGradient16(vec2 uv) {
+      vec2 pixel = uv * uTextureSize - 0.5;
+      vec2 base = floor(pixel);
+      vec2 fraction = fract(pixel);
+      vec2 uv00 = (base + vec2(0.5, 0.5)) / uTextureSize;
+      vec2 uv10 = (base + vec2(1.5, 0.5)) / uTextureSize;
+      vec2 uv01 = (base + vec2(0.5, 1.5)) / uTextureSize;
+      vec2 uv11 = (base + vec2(1.5, 1.5)) / uTextureSize;
+      return mix(
+        mix(normalTap(uv00), normalTap(uv10), fraction.x),
+        mix(normalTap(uv01), normalTap(uv11), fraction.x),
+        fraction.y
+      );
+    }
+
+    float sampleCoverage(vec2 uv) {
+      return sampleShapeData16(uv).y;
     }
 
     vec4 boundsForId(float id) {
@@ -168,13 +221,69 @@
     }
 
     float signedDistance(vec2 uv) {
-      float encoded = sampleDistance16(uv);
+      float encoded = sampleDistancePair16(uv).x;
       return (encoded * 2.0 - 1.0) * uSpread;
     }
 
     float band(float value, float center, float width) {
       float distanceValue = (value - center) / width;
       return exp(-distanceValue * distanceValue);
+    }
+
+    vec3 srgbToLinear(vec3 color) {
+      return pow(max(color, 0.0), vec3(2.2));
+    }
+
+    vec3 linearToSrgb(vec3 color) {
+      return pow(max(color, 0.0), vec3(1.0 / 2.2));
+    }
+
+    vec3 acesApprox(vec3 color) {
+      return clamp(
+        (color * (2.51 * color + 0.03)) /
+        (color * (2.43 * color + 0.59) + 0.14),
+        0.0,
+        1.0
+      );
+    }
+
+    vec2 colorFieldUv(vec3 direction) {
+      direction = normalize(direction);
+      return vec2(
+        clamp(0.50 + direction.x * 0.48, 0.002, 0.998),
+        clamp(0.50 + direction.y * 0.48, 0.002, 0.998)
+      );
+    }
+
+    float softBox(vec2 point, vec2 center, vec2 halfSize, float feather) {
+      vec2 delta = abs(point - center);
+      delta.x = min(delta.x, 1.0 - delta.x);
+      vec2 outside = max(delta - halfSize, 0.0);
+      return 1.0 - smoothstep(0.0, feather, length(outside));
+    }
+
+    float starBurst(vec2 uv, vec2 center, float size) {
+      vec2 point = (uv - center) * vec2(1.7777778, 1.0) / size;
+      vec2 absolutePoint = abs(point);
+      float core = exp(-dot(point, point) * 16.0);
+      float cross = exp(-absolutePoint.x * 52.0 - absolutePoint.y * 0.92)
+        + exp(-absolutePoint.y * 52.0 - absolutePoint.x * 0.92);
+      vec2 diagonal = abs(vec2(point.x + point.y, point.x - point.y));
+      float diagonalRays = exp(-diagonal.x * 28.0 - diagonal.y * 1.55)
+        + exp(-diagonal.y * 28.0 - diagonal.x * 1.55);
+      return core + cross * 0.62 + diagonalRays * 0.22;
+    }
+
+    vec4 metalOrb(vec2 uv, vec2 center, float radius, vec3 tint) {
+      vec2 point = (uv - center) * vec2(1.7777778, 1.0) / radius;
+      float radial = length(point);
+      float mask = 1.0 - smoothstep(0.82, 1.0, radial);
+      float dome = sqrt(max(0.0, 1.0 - radial * radial));
+      float highlight = exp(-dot(point - vec2(-0.34, -0.42), point - vec2(-0.34, -0.42)) * 18.0);
+      float horizon = band(point.y, 0.16, 0.24);
+      vec3 color = mix(vec3(0.16, 0.12, 0.24), vec3(0.88, 0.91, 1.0), dome);
+      color += tint * horizon * 0.52 + vec3(highlight * 0.84);
+      return vec4(color, mask);
     }
 
     float smoothMax(float a, float b, float radius) {
@@ -196,18 +305,46 @@
 
     vec3 backgroundColor(vec2 uv) {
       vec2 centered = uv - 0.5;
-      vec3 top = vec3(0.69, 0.63, 0.98);
-      vec3 bottom = vec3(1.00, 0.70, 0.91);
-      vec3 color = mix(top, bottom, smoothstep(0.0, 1.0, uv.y));
-      float halo = exp(-4.2 * dot(centered * vec2(0.88, 1.25), centered * vec2(0.88, 1.25)));
-      color += vec3(0.17, 0.13, 0.25) * halo;
-      float orbit = exp(-235.0 * abs(length(centered * vec2(0.78, 1.85)) - 0.38));
-      color += mix(uPink, uCyan, uv.x) * orbit * 0.16;
+      vec3 top = vec3(0.66, 0.65, 0.97);
+      vec3 middle = vec3(0.95, 0.72, 0.93);
+      vec3 bottom = vec3(1.00, 0.66, 0.82);
+      vec3 color = mix(top, middle, smoothstep(0.0, 0.54, uv.y));
+      color = mix(color, bottom, smoothstep(0.52, 1.0, uv.y));
+      float halo = exp(-3.7 * dot(centered * vec2(0.82, 1.18), centered * vec2(0.82, 1.18)));
+      color += vec3(0.19, 0.16, 0.26) * halo;
+
+      vec2 orbitPoint = centered * vec2(0.77, 1.88);
+      float orbitAngle = atan(orbitPoint.y, orbitPoint.x);
+      float orbitGate = smoothstep(-0.28, 0.14, sin(orbitAngle * 2.0 + 0.7));
+      float mainOrbit = exp(-310.0 * abs(length(orbitPoint) - 0.38)) * orbitGate;
+      vec2 secondPoint = (uv - vec2(0.47, 0.53)) * vec2(0.92, 2.42);
+      float secondAngle = atan(secondPoint.y, secondPoint.x);
+      float secondGate = smoothstep(-0.18, 0.28, -cos(secondAngle * 2.0 - 0.9));
+      float secondOrbit = exp(-390.0 * abs(length(secondPoint) - 0.35)) * secondGate;
+      color += mix(uPink, vec3(1.0), smoothstep(0.18, 0.58, uv.x)) * mainOrbit * 0.25 * uSceneDetail;
+      color += mix(vec3(1.0), uCyan, smoothstep(0.45, 0.88, uv.x)) * secondOrbit * 0.12 * uSceneDetail;
+
+      float sparkles = starBurst(uv, vec2(0.17, 0.18), 0.036) * 0.75;
+      sparkles += starBurst(uv, vec2(0.77, 0.17), 0.031) * 0.84;
+      sparkles += starBurst(uv, vec2(0.88, 0.72), 0.025) * 0.62;
+      color += vec3(sparkles * uSceneDetail);
+
+      vec4 orbA = metalOrb(uv, vec2(0.11, 0.69), 0.017, uCyan);
+      vec4 orbB = metalOrb(uv, vec2(0.82, 0.26), 0.012, uPink);
+      vec4 orbC = metalOrb(uv, vec2(0.91, 0.43), 0.009, uCyan);
+      color = mix(color, orbA.rgb, orbA.a * 0.72 * uSceneDetail);
+      color = mix(color, orbB.rgb, orbB.a * 0.78 * uSceneDetail);
+      color = mix(color, orbC.rgb, orbC.a * 0.66 * uSceneDetail);
+
       vec2 grid = abs(fract(uv * vec2(20.0, 11.25)) - 0.5);
-      float gridLine = smoothstep(0.485, 0.5, max(grid.x, grid.y)) * 0.018;
+      float gridLine = smoothstep(0.492, 0.5, max(grid.x, grid.y)) * 0.010;
       color += vec3(gridLine);
-      vec2 floorPoint = (uv - vec2(0.5, 0.68)) * vec2(2.3, 10.0);
-      color -= vec3(0.11, 0.045, 0.13) * exp(-dot(floorPoint, floorPoint));
+      float floorLine = exp(-780.0 * abs(uv.y - 0.78));
+      color += mix(uPink, vec3(1.0), uv.x) * floorLine * 0.10 * uSceneDetail;
+      vec2 floorPoint = (uv - vec2(0.5, 0.72)) * vec2(2.1, 11.0);
+      color -= vec3(0.11, 0.045, 0.13) * exp(-dot(floorPoint, floorPoint)) * (0.75 + uSceneDetail * 0.25);
+      float grain = texture2D(uNoiseTexture, uv * vec2(4.0, 2.25)).b - 0.5;
+      color += vec3(grain * 0.012 * uSceneDetail);
       float vignette = smoothstep(0.86, 0.24, length(centered));
       return color * mix(0.88, 1.04, vignette);
     }
@@ -220,50 +357,118 @@
 
       if (uDebugId > 0.5) {
         vec3 debugColor = mix(vec3(0.025), idPalette(id), hasCell);
-        float alpha = texture2D(uShapeTexture, uv).g;
-        debugColor += vec3(alpha * 0.30);
+        debugColor += vec3(sampleCoverage(uv) * 0.30);
         gl_FragColor = vec4(debugColor, 1.0);
         return;
       }
 
-      float surfaceD = signedDistance(uv) + 3.5;
+      if (uv.y > 0.78 && uSceneDetail > 0.001) {
+        float reflectedY = 0.78 - (uv.y - 0.78) / 0.42;
+        vec2 reflectedUv = vec2(uv.x, reflectedY);
+        vec2 blurStep = vec2(0.0, 4.0 / uTextureSize.y);
+        float reflectedAlpha = sampleCoverage(reflectedUv - blurStep) * 0.25;
+        reflectedAlpha += sampleCoverage(reflectedUv) * 0.50;
+        reflectedAlpha += sampleCoverage(reflectedUv + blurStep) * 0.25;
+        float reflectionFade = exp(-(uv.y - 0.78) * 11.0) * smoothstep(0.98, 0.78, uv.y);
+        vec3 reflectedColor = mix(uPink * 0.58, uCyan * 0.34 + vec3(0.38), uv.x);
+        background = mix(background, reflectedColor, reflectedAlpha * reflectionFade * 0.16 * uSceneDetail);
+      }
+
+      vec2 distancePair = sampleDistancePair16(uv);
+      float surfaceD = (distancePair.x * 2.0 - 1.0) * uSpread + ${BODY_INFLATE.toFixed(1)};
+      float shadingSurfaceD = (distancePair.y * 2.0 - 1.0) * ${SHADING_SDF_SPREAD.toFixed(1)} + ${BODY_INFLATE.toFixed(1)};
       float aa = edgeAA(surfaceD);
       float fill = smoothstep(-aa, aa, surfaceD);
       float glow = exp(-max(-surfaceD, 0.0) / 22.0) * (1.0 - fill) * uGlow;
+      ${DEBUG_SURFACE === "fill" ? `
+        gl_FragColor = vec4(vec3(fill), 1.0);
+        return;
+      ` : ""}
+      ${DEBUG_SURFACE === "shading" ? `
+        float shadingRamp = clamp(shadingSurfaceD / max(uEdgeWidth, 0.001), 0.0, 1.0);
+        gl_FragColor = vec4(vec3(shadingRamp), 1.0);
+        return;
+      ` : ""}
 
-      // B stores a blurred body-height field. Deriving its gradient over a
-      // wider footprint keeps highlights continuous after canvas scaling and
-      // avoids quantizing a precomputed normal into two 8-bit channels.
-      vec2 normalStep = vec2(3.0) / uTextureSize;
-      float heightLeft = sampleHeight16(uv - vec2(normalStep.x, 0.0));
-      float heightRight = sampleHeight16(uv + vec2(normalStep.x, 0.0));
-      float heightTop = sampleHeight16(uv - vec2(0.0, normalStep.y));
-      float heightBottom = sampleHeight16(uv + vec2(0.0, normalStep.y));
-      vec2 bodyGradient = vec2(heightRight - heightLeft, heightBottom - heightTop) * 0.5;
-      float roundness = mix(1.20, 2.80, clamp((uBevel - 4.0) / 24.0, 0.0, 1.0));
-      vec2 normalXY = -bodyGradient * roundness;
+      // The body crown and edge roll are intentionally separate. Body height
+      // comes from broad blurred coverage; the rim direction and coordinate
+      // both come from one smooth shading SDF, while raw SDF only clips shape.
+      float bodyStepPx = 5.0;
+      vec2 bodyStep = vec2(bodyStepPx) / uTextureSize;
+      float bodyLeft = sampleShapeData16(uv - vec2(bodyStep.x, 0.0)).x;
+      float bodyRight = sampleShapeData16(uv + vec2(bodyStep.x, 0.0)).x;
+      float bodyTop = sampleShapeData16(uv - vec2(0.0, bodyStep.y)).x;
+      float bodyBottom = sampleShapeData16(uv + vec2(0.0, bodyStep.y)).x;
+      vec2 bodyGradient = vec2(bodyRight - bodyLeft, bodyBottom - bodyTop) / (bodyStepPx * 2.0);
+      vec2 bodyNormalXY = -bodyGradient * uBodyCrown;
+      float bodyLength = length(bodyNormalXY);
+      bodyNormalXY *= min(1.0, 0.52 / max(bodyLength, 0.001));
+
+      vec2 edgeGradient = sampleEdgeGradient16(uv);
+      float edgeGradientLength = length(edgeGradient);
+      float edgeConfidence = smoothstep(0.08, 0.32, edgeGradientLength);
+      vec2 edgeDirection = edgeGradient / max(edgeGradientLength, 0.0001);
+      ${DEBUG_SURFACE === "edge" ? `
+        gl_FragColor = vec4(edgeGradient * 0.38 + 0.5, edgeConfidence, 1.0);
+        return;
+      ` : ""}
+      float effectiveEdgeWidth = max(uEdgeWidth, aa * 1.5);
+      float edgeX = clamp(shadingSurfaceD / effectiveEdgeWidth, 0.0, 1.0);
+      float rawEdgeSlope = (1.0 - edgeX) / sqrt(max(2.0 * edgeX - edgeX * edgeX, 0.018));
+      float maxEdgeSlope = 2.4;
+      float edgeSlope = maxEdgeSlope * (1.0 - exp(-rawEdgeSlope / maxEdgeSlope));
+      float edgeMix = (1.0 - smoothstep(effectiveEdgeWidth * 0.62, effectiveEdgeWidth, shadingSurfaceD)) * edgeConfidence;
+      vec2 edgeNormalXY = -edgeDirection * edgeSlope;
+      vec2 normalXY = mix(bodyNormalXY, edgeNormalXY, edgeMix);
+
+      vec4 glyphBounds = boundsForId(id);
+      vec2 glyphSize = max(glyphBounds.zw, vec2(0.02));
+      vec2 glyphLocal = clamp((uv - glyphBounds.xy) / glyphSize, vec2(-0.75), vec2(0.75));
+      normalXY += glyphLocal * vec2(0.022, 0.014) * hasCell;
 
       vec2 noiseUv = uv * vec2(1.35, 1.85) + vec2(2.7, -1.9);
       vec2 liquid = texture2D(uNoiseTexture, noiseUv).rg - 0.5;
-      normalXY += liquid * 0.045;
+      normalXY += liquid * 0.016;
       vec3 normal = normalize(vec3(normalXY, 1.0));
+      ${DEBUG_SURFACE === "normal" ? `
+        gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+        return;
+      ` : ""}
 
       vec3 reflected = reflect(vec3(0.0, 0.0, -1.0), normal);
-      float envY = clamp(reflected.y * 0.5 + 0.5 + liquid.x * 0.035, 0.0, 1.0);
-      vec3 env = vec3(0.31, 0.32, 0.39);
-      env += mix(uCyan, vec3(0.72, 0.92, 1.00), 0.42) * band(envY, 0.17, 0.20) * 0.68;
-      env += vec3(1.00, 0.99, 1.00) * band(envY, 0.34, 0.135) * 0.92;
-      env -= vec3(0.18, 0.16, 0.22) * band(envY, 0.52, 0.13) * 0.72;
-      env += (uPink * 0.62 + vec3(0.19)) * band(envY, 0.70, 0.18) * 0.82;
-      env += vec3(0.92, 0.95, 1.00) * band(envY, 0.88, 0.105) * 0.70;
+      reflected = normalize(vec3(reflected.xy * 1.34, reflected.z));
+      vec2 fieldUv = colorFieldUv(reflected);
+      float glyphSeed = fract(floor(id * 255.0 + 0.5) * 0.6180339);
+      fieldUv.x = clamp(fieldUv.x + (glyphSeed - 0.5) * 0.028, 0.002, 0.998);
+
+      vec4 fieldSample = texture2D(uColorFieldTexture, fieldUv);
+      vec3 sampledField = srgbToLinear(fieldSample.rgb);
+      float sampledLuma = dot(sampledField, vec3(0.2126, 0.7152, 0.0722));
+      sampledField = max(vec3(0.0), mix(vec3(sampledLuma), sampledField, 1.58));
+
+      float whitePatch = softBox(fieldUv, vec2(0.28, 0.26), vec2(0.16, 0.16), 0.085);
+      float cyanStrip = softBox(fieldUv, vec2(0.82, 0.43), vec2(0.042, 0.28), 0.050);
+      float pinkRibbon = band(fieldUv.y + fieldUv.x * 0.13, 0.77, 0.10);
+      float darkRibbon = softBox(fieldUv, vec2(0.56, 0.53), vec2(0.22, 0.055), 0.060);
+      vec3 fieldLinear = sampledField * mix(0.68, 0.98, uColorFieldStrength);
+      fieldLinear += vec3(fieldSample.a * 0.12 * uColorFieldStrength);
+      fieldLinear += vec3(1.0, 0.98, 1.0) * whitePatch * 0.14 * uColorFieldStrength;
+      fieldLinear += srgbToLinear(uCyan) * cyanStrip * 0.58 * uColorFieldStrength;
+      fieldLinear += srgbToLinear(uPink) * pinkRibbon * 0.48 * uColorFieldStrength;
+      fieldLinear *= 1.0 - darkRibbon * 0.46 * uColorFieldStrength;
 
       float fresnel = pow(1.0 - clamp(normal.z, 0.0, 1.0), 2.45);
       float areaLight = pow(max(dot(normal, normalize(vec3(-0.38, -0.48, 0.79))), 0.0), 10.5);
       vec3 edgeTint = mix(uPink, uCyan, clamp(normal.x * 0.5 + 0.5, 0.0, 1.0));
-      vec3 chrome = mix(vec3(0.66, 0.68, 0.73), env, 0.38 + uReflection * 0.62);
-      chrome += vec3(areaLight * 0.76);
-      chrome += edgeTint * fresnel * 0.42;
-      chrome *= 0.92 + normal.z * 0.08;
+      vec3 chromeLinear = mix(
+        srgbToLinear(vec3(0.60, 0.62, 0.68)),
+        fieldLinear,
+        0.24 + uReflection * 0.76
+      );
+      chromeLinear += vec3(areaLight * mix(0.30, 0.58, uColorFieldStrength));
+      chromeLinear += srgbToLinear(edgeTint) * fresnel * 0.56;
+      chromeLinear *= 0.94 + normal.z * 0.08;
+      vec3 chrome = linearToSrgb(acesApprox(chromeLinear * 0.98));
 
       vec2 extrusionOffset = vec2(-0.68, -1.0) * uExtrusion / uTextureSize;
       float backD = signedDistance(uv + extrusionOffset) + 3.5;
@@ -331,12 +536,17 @@
     idTexture: gl.getUniformLocation(program, "uIdTexture"),
     boundsTexture: gl.getUniformLocation(program, "uBoundsTexture"),
     noiseTexture: gl.getUniformLocation(program, "uNoiseTexture"),
+    colorFieldTexture: gl.getUniformLocation(program, "uColorFieldTexture"),
+    normalTexture: gl.getUniformLocation(program, "uNormalTexture"),
     textureSize: gl.getUniformLocation(program, "uTextureSize"),
     spread: gl.getUniformLocation(program, "uSpread"),
-    bevel: gl.getUniformLocation(program, "uBevel"),
+    edgeWidth: gl.getUniformLocation(program, "uEdgeWidth"),
+    bodyCrown: gl.getUniformLocation(program, "uBodyCrown"),
     reflection: gl.getUniformLocation(program, "uReflection"),
+    colorFieldStrength: gl.getUniformLocation(program, "uColorFieldStrength"),
     extrusion: gl.getUniformLocation(program, "uExtrusion"),
     glow: gl.getUniformLocation(program, "uGlow"),
+    sceneDetail: gl.getUniformLocation(program, "uSceneDetail"),
     cyan: gl.getUniformLocation(program, "uCyan"),
     pink: gl.getUniformLocation(program, "uPink"),
     debugId: gl.getUniformLocation(program, "uDebugId"),
@@ -361,49 +571,44 @@
     return texture;
   }
 
-  const shapeTexture = createTexture(gl.TEXTURE0, gl.LINEAR);
+  const shapeTexture = createTexture(gl.TEXTURE0, gl.NEAREST);
   const idTexture = createTexture(gl.TEXTURE1, gl.NEAREST);
   const boundsTexture = createTexture(gl.TEXTURE2, gl.NEAREST);
   const noiseTexture = createTexture(gl.TEXTURE3, gl.LINEAR, gl.REPEAT);
   const distanceTexture = createTexture(gl.TEXTURE4, gl.NEAREST);
+  const colorFieldTexture = createTexture(gl.TEXTURE5, gl.LINEAR);
+  const normalTexture = createTexture(gl.TEXTURE6, gl.NEAREST);
+
+  gl.activeTexture(gl.TEXTURE5);
+  gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(
+    gl.TEXTURE_2D,
+    0,
+    gl.RGBA,
+    1,
+    1,
+    0,
+    gl.RGBA,
+    gl.UNSIGNED_BYTE,
+    new Uint8Array([118, 124, 146, 255]),
+  );
+
+  function buildReflectionColorField() {
+    const width = 512;
+    const height = 256;
+    const pixels = createReflectionColorField(width, height);
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.generateMipmap(gl.TEXTURE_2D);
+  }
 
   function buildNoiseTexture() {
     const size = 64;
-    const gridSize = 8;
-    const pixels = new Uint8Array(size * size * 4);
-    let seed = 0x2f6e2b1;
-    const random = () => {
-      seed ^= seed << 13;
-      seed ^= seed >>> 17;
-      seed ^= seed << 5;
-      return (seed >>> 0) / 4294967295;
-    };
-    const gridR = Float32Array.from({ length: gridSize * gridSize }, random);
-    const gridG = Float32Array.from({ length: gridSize * gridSize }, random);
-    const smooth = (value) => value * value * (3 - 2 * value);
-    const sampleGrid = (grid, x, y) => {
-      const wrappedX = (x + gridSize) % gridSize;
-      const wrappedY = (y + gridSize) % gridSize;
-      return grid[wrappedY * gridSize + wrappedX];
-    };
-    for (let y = 0; y < size; y += 1) {
-      const gridY = (y / size) * gridSize;
-      const iy = Math.floor(gridY);
-      const fy = smooth(gridY - iy);
-      for (let x = 0; x < size; x += 1) {
-        const gridX = (x / size) * gridSize;
-        const ix = Math.floor(gridX);
-        const fx = smooth(gridX - ix);
-        const pixelIndex = (y * size + x) * 4;
-        [gridR, gridG].forEach((grid, channel) => {
-          const top = sampleGrid(grid, ix, iy) * (1 - fx) + sampleGrid(grid, ix + 1, iy) * fx;
-          const bottom = sampleGrid(grid, ix, iy + 1) * (1 - fx) + sampleGrid(grid, ix + 1, iy + 1) * fx;
-          pixels[pixelIndex + channel] = Math.round((top * (1 - fy) + bottom * fy) * 255);
-        });
-        pixels[pixelIndex + 2] = Math.floor(random() * 255);
-        pixels[pixelIndex + 3] = 255;
-      }
-    }
+    const pixels = createNoiseField(size, 8);
     gl.activeTexture(gl.TEXTURE3);
     gl.bindTexture(gl.TEXTURE_2D, noiseTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, size, size, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
@@ -520,48 +725,45 @@
     }
   }
 
-  function blurScalarField(source, width, height, radius) {
-    const sigma = Math.max(1, radius * 0.58);
-    const weights = new Float32Array(radius + 1);
-    let weightSum = 0;
-    for (let offset = 0; offset <= radius; offset += 1) {
-      const weight = Math.exp(-(offset * offset) / (2 * sigma * sigma));
-      weights[offset] = weight;
-      weightSum += offset === 0 ? weight : weight * 2;
-    }
-    for (let offset = 0; offset <= radius; offset += 1) weights[offset] /= weightSum;
-
-    const horizontal = new Float32Array(source.length);
-    const output = new Float32Array(source.length);
-    for (let y = 0; y < height; y += 1) {
-      const row = y * width;
-      for (let x = 0; x < width; x += 1) {
-        let value = source[row + x] * weights[0];
-        for (let offset = 1; offset <= radius; offset += 1) {
-          value += source[row + Math.max(0, x - offset)] * weights[offset];
-          value += source[row + Math.min(width - 1, x + offset)] * weights[offset];
-        }
-        horizontal[row + x] = value;
-      }
-    }
-    for (let y = 0; y < height; y += 1) {
-      for (let x = 0; x < width; x += 1) {
-        let value = horizontal[y * width + x] * weights[0];
-        for (let offset = 1; offset <= radius; offset += 1) {
-          value += horizontal[Math.max(0, y - offset) * width + x] * weights[offset];
-          value += horizontal[Math.min(height - 1, y + offset) * width + x] * weights[offset];
-        }
-        output[y * width + x] = value;
-      }
-    }
-    return output;
-  }
-
   function encodeNormalized16(value) {
     const packed = Math.round(Math.max(0, Math.min(1, value)) * 65535);
     return [packed >> 8, packed & 255];
   }
 
+  function encodeSigned16(value, range) {
+    const normalized = Math.max(-1, Math.min(1, value / range));
+    const packed = Math.round((normalized * 0.5 + 0.5) * 65535);
+    return [packed >> 8, packed & 255];
+  }
+
+  function writeGlyphEdgeGradient(glyph, shadingField, normalPixels, width, height) {
+    const left = Math.max(1, Math.floor(glyph.cellLeft));
+    const right = Math.min(width - 1, Math.ceil(glyph.cellRight));
+    const top = Math.max(1, Math.floor(glyph.cellTop));
+    const bottom = Math.min(height - 1, Math.ceil(glyph.cellBottom));
+    const sample = (x, y) => {
+      const clampedX = Math.max(glyph.cellLeft, Math.min(glyph.cellRight - 1, x));
+      const clampedY = Math.max(glyph.cellTop, Math.min(glyph.cellBottom - 1, y));
+      return shadingField[clampedY * width + clampedX];
+    };
+
+    for (let y = top; y < bottom; y += 1) {
+      for (let x = left; x < right; x += 1) {
+        const surfaceDistance = shadingField[y * width + x] + BODY_INFLATE;
+        if (surfaceDistance < -4 || surfaceDistance > 19) continue;
+
+        const gradientX = (sample(x + 1, y) - sample(x - 1, y)) / 2;
+        const gradientY = (sample(x, y + 1) - sample(x, y - 1)) / 2;
+        const encodedX = encodeSigned16(gradientX, 1.25);
+        const encodedY = encodeSigned16(gradientY, 1.25);
+        const output = (y * width + x) * 4;
+        normalPixels[output] = encodedX[0];
+        normalPixels[output + 1] = encodedX[1];
+        normalPixels[output + 2] = encodedY[0];
+        normalPixels[output + 3] = encodedY[1];
+      }
+    }
+  }
   function rebuildTextures() {
     const startedAt = performance.now();
     ui.renderStatus.textContent = "BUILDING SDF";
@@ -654,8 +856,16 @@
     const alphaPixels = sourceContext.getImageData(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT).data;
     const shapePixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
     const distancePixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
+    const normalPixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
     for (let index = 0; index < shapePixels.length; index += 4) {
+      shapePixels[index] = 0;
+      shapePixels[index + 1] = 0;
+      shapePixels[index + 2] = alphaPixels[index + 3];
       shapePixels[index + 3] = 255;
+      normalPixels[index] = 128;
+      normalPixels[index + 1] = 0;
+      normalPixels[index + 2] = 128;
+      normalPixels[index + 3] = 0;
     }
 
     if (state.glyphs.length > 0) {
@@ -680,17 +890,28 @@
       edt2d(outer, width, height);
       edt2d(inner, width, height);
       const signedField = new Float32Array(length);
-      const heightField = new Float32Array(length);
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
           const localIndex = y * width + x;
           const signed = Math.sqrt(inner[localIndex]) - Math.sqrt(outer[localIndex]);
           signedField[localIndex] = signed;
-          const bodyT = Math.max(0, Math.min(1, (signed + BODY_INFLATE) / BODY_RADIUS));
-          heightField[localIndex] = bodyT * bodyT * (3 - 2 * bodyT);
         }
       }
-      const smoothHeight = blurScalarField(heightField, width, height, BODY_BLUR_RADIUS);
+
+      // The broad face crown is built from blurred coverage per glyph cell.
+      // It deliberately does not use raw SDF gradients, which are undefined at
+      // stroke medial axes and previously produced seams in complex characters.
+      const bodySigma = Math.max(12, Math.min(46, layout.fontSize * 0.068));
+      const smoothHeight = createGlyphBodyHeight(alphaPixels, width, height, state.glyphs, bodySigma);
+      const shadingField = createGlyphShadingDistance(
+        signedField,
+        width,
+        height,
+        state.glyphs,
+        SHADING_SDF_SPREAD,
+      );
+      state.glyphs.forEach((glyph) => writeGlyphEdgeGradient(glyph, shadingField, normalPixels, width, height));
+
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
           const localIndex = y * width + x;
@@ -698,15 +919,18 @@
           const encoded = Math.max(0, Math.min(1, 0.5 + signed / (2 * SDF_SPREAD)));
           const outputIndex = localIndex * 4;
           const distance16 = Math.round(encoded * 65535);
-          const height16 = Math.round(smoothHeight[localIndex] * 65535);
-          shapePixels[outputIndex] = Math.round(encoded * 255);
-          shapePixels[outputIndex + 1] = alphaPixels[outputIndex + 3];
-          shapePixels[outputIndex + 2] = Math.round(smoothHeight[localIndex] * 255);
-          shapePixels[outputIndex + 3] = 255;
+          const bodyHeight16 = Math.round(Math.max(0, Math.min(1, smoothHeight[localIndex])) * 65535);
+          const shadingEncoded = Math.max(
+            0,
+            Math.min(1, 0.5 + shadingField[localIndex] / (2 * SHADING_SDF_SPREAD)),
+          );
+          const shadingDistance16 = Math.round(shadingEncoded * 65535);
           distancePixels[outputIndex] = distance16 >> 8;
           distancePixels[outputIndex + 1] = distance16 & 255;
-          distancePixels[outputIndex + 2] = height16 >> 8;
-          distancePixels[outputIndex + 3] = height16 & 255;
+          distancePixels[outputIndex + 2] = shadingDistance16 >> 8;
+          distancePixels[outputIndex + 3] = shadingDistance16 & 255;
+          shapePixels[outputIndex] = bodyHeight16 >> 8;
+          shapePixels[outputIndex + 1] = bodyHeight16 & 255;
         }
       }
     }
@@ -747,6 +971,9 @@
     gl.activeTexture(gl.TEXTURE4);
     gl.bindTexture(gl.TEXTURE_2D, distanceTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, distancePixels);
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, normalTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, normalPixels);
 
     ui.glyphReadout.textContent = `${String(state.glyphs.length).padStart(2, "0")} GLYPHS`;
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
@@ -761,7 +988,7 @@
 
   function resizeCanvas() {
     const rect = ui.canvas.getBoundingClientRect();
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const dpr = Math.min((window.devicePixelRatio || 1) * 1.5, 3);
     const width = Math.max(1, Math.round(rect.width * dpr));
     const height = Math.max(1, Math.round(rect.height * dpr));
     if (ui.canvas.width !== width || ui.canvas.height !== height) {
@@ -777,7 +1004,7 @@
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
     gl.enableVertexAttribArray(locations.position);
     gl.vertexAttribPointer(locations.position, 2, gl.FLOAT, false, 0, 0);
-    [shapeTexture, idTexture, boundsTexture, noiseTexture, distanceTexture].forEach((texture, index) => {
+    [shapeTexture, idTexture, boundsTexture, noiseTexture, distanceTexture, colorFieldTexture, normalTexture].forEach((texture, index) => {
       gl.activeTexture(gl.TEXTURE0 + index);
       gl.bindTexture(gl.TEXTURE_2D, texture);
     });
@@ -786,12 +1013,17 @@
     gl.uniform1i(locations.boundsTexture, 2);
     gl.uniform1i(locations.noiseTexture, 3);
     gl.uniform1i(locations.distanceTexture, 4);
+    gl.uniform1i(locations.colorFieldTexture, 5);
+    gl.uniform1i(locations.normalTexture, 6);
     gl.uniform2f(locations.textureSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     gl.uniform1f(locations.spread, SDF_SPREAD);
-    gl.uniform1f(locations.bevel, state.bevel);
+    gl.uniform1f(locations.edgeWidth, state.edgeWidth);
+    gl.uniform1f(locations.bodyCrown, state.bodyCrown);
     gl.uniform1f(locations.reflection, state.reflection / 100);
+    gl.uniform1f(locations.colorFieldStrength, state.colorField / 100);
     gl.uniform1f(locations.extrusion, state.extrusion);
     gl.uniform1f(locations.glow, state.glow / 100);
+    gl.uniform1f(locations.sceneDetail, state.sceneDetail / 100);
     gl.uniform3fv(locations.cyan, hexToRgb(state.cyan));
     gl.uniform3fv(locations.pink, hexToRgb(state.pink));
     gl.uniform1f(locations.debugId, state.debugId ? 1 : 0);
@@ -816,18 +1048,24 @@
     ui.textInput.value = state.text;
     ui.trackingInput.value = String(state.tracking);
     ui.lineHeightInput.value = String(state.lineHeight);
-    ui.bevelInput.value = String(state.bevel);
+    ui.edgeWidthInput.value = String(state.edgeWidth);
+    ui.bodyCrownInput.value = String(state.bodyCrown);
     ui.reflectionInput.value = String(state.reflection);
+    ui.colorFieldInput.value = String(state.colorField);
     ui.extrusionInput.value = String(state.extrusion);
     ui.glowInput.value = String(state.glow);
+    ui.sceneDetailInput.value = String(state.sceneDetail);
     ui.cyanInput.value = state.cyan;
     ui.pinkInput.value = state.pink;
     ui.trackingValue.value = `${state.tracking} PX`;
     ui.lineHeightValue.value = `${state.lineHeight.toFixed(2)}×`;
-    ui.bevelValue.value = `${state.bevel} PX`;
+    ui.edgeWidthValue.value = `${state.edgeWidth} PX`;
+    ui.bodyCrownValue.value = String(state.bodyCrown);
     ui.reflectionValue.value = `${state.reflection}%`;
+    ui.colorFieldValue.value = `${state.colorField}%`;
     ui.extrusionValue.value = `${state.extrusion} PX`;
     ui.glowValue.value = `${state.glow}%`;
+    ui.sceneDetailValue.value = `${state.sceneDetail}%`;
   }
 
   ui.textInput.addEventListener("input", (event) => {
@@ -845,10 +1083,13 @@
     scheduleRebuild();
   });
   [
-    [ui.bevelInput, "bevel", ui.bevelValue, (value) => `${value} PX`],
+    [ui.edgeWidthInput, "edgeWidth", ui.edgeWidthValue, (value) => `${value} PX`],
+    [ui.bodyCrownInput, "bodyCrown", ui.bodyCrownValue, (value) => String(value)],
     [ui.reflectionInput, "reflection", ui.reflectionValue, (value) => `${value}%`],
+    [ui.colorFieldInput, "colorField", ui.colorFieldValue, (value) => `${value}%`],
     [ui.extrusionInput, "extrusion", ui.extrusionValue, (value) => `${value} PX`],
     [ui.glowInput, "glow", ui.glowValue, (value) => `${value}%`],
+    [ui.sceneDetailInput, "sceneDetail", ui.sceneDetailValue, (value) => `${value}%`],
   ].forEach(([input, key, output, format]) => {
     input.addEventListener("input", (event) => {
       state[key] = Number(event.currentTarget.value);
@@ -880,6 +1121,7 @@
     : gl.getParameter(gl.RENDERER);
   ui.gpuStatus.textContent = `WEBGL 1 · ${renderer}`;
   buildNoiseTexture();
+  buildReflectionColorField();
   syncControls();
   document.fonts.ready.then(rebuildTextures);
 })();

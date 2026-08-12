@@ -78,7 +78,7 @@
 
           <footer class="canvas-status">
             <span><i class="status-dot"></i><b id="renderStatus">BUILDING SDF</b></span>
-            <span>16-BIT SDF + HEIGHT · GLYPH ID · STATIC RENDER</span>
+            <span>DUAL 16-BIT SDF · 16-BIT NORMAL · GLYPH ID</span>
             <span id="buildTime">0 MS</span>
           </footer>
         </section>
@@ -97,36 +97,48 @@
 CHROME</textarea>
             </label>
             <label class="range-control" for="trackingInput">
-              <span><b>TRACKING</b><output id="trackingValue">18 PX</output></span>
+              <span><b>TRACKING</b><output id="trackingValue">4 PX</output></span>
               <input id="trackingInput" type="range" min="-8" max="32" value="4" step="1" />
             </label>
             <label class="range-control" for="lineHeightInput">
-              <span><b>LINE HEIGHT</b><output id="lineHeightValue">0.96×</output></span>
+              <span><b>LINE HEIGHT</b><output id="lineHeightValue">0.88×</output></span>
               <input id="lineHeightInput" type="range" min="0.76" max="1.08" value="0.88" step="0.01" />
             </label>
           </section>
 
           <section class="control-section">
             <div class="section-title"><span>MATERIAL</span><em>02</em></div>
-            <label class="range-control" for="bevelInput">
-              <span><b>ROUNDNESS</b><output id="bevelValue">14 PX</output></span>
-              <input id="bevelInput" type="range" min="4" max="28" value="14" step="1" />
+            <label class="range-control" for="edgeWidthInput">
+              <span><b>EDGE ROLL</b><output id="edgeWidthValue">8 PX</output></span>
+              <input id="edgeWidthInput" type="range" min="3" max="14" value="8" step="1" />
+            </label>
+            <label class="range-control" for="bodyCrownInput">
+              <span><b>BODY CROWN</b><output id="bodyCrownValue">16</output></span>
+              <input id="bodyCrownInput" type="range" min="6" max="24" value="16" step="1" />
             </label>
             <label class="range-control" for="reflectionInput">
-              <span><b>REFLECTION</b><output id="reflectionValue">78%</output></span>
-              <input id="reflectionInput" type="range" min="0" max="100" value="78" step="1" />
+              <span><b>REFLECTION</b><output id="reflectionValue">88%</output></span>
+              <input id="reflectionInput" type="range" min="0" max="100" value="88" step="1" />
+            </label>
+            <label class="range-control" for="colorFieldInput">
+              <span><b>COLOR FIELD</b><output id="colorFieldValue">82%</output></span>
+              <input id="colorFieldInput" type="range" min="0" max="100" value="82" step="1" />
             </label>
             <label class="range-control" for="extrusionInput">
-              <span><b>DEPTH</b><output id="extrusionValue">9 PX</output></span>
-              <input id="extrusionInput" type="range" min="0" max="24" value="9" step="1" />
+              <span><b>DEPTH</b><output id="extrusionValue">8 PX</output></span>
+              <input id="extrusionInput" type="range" min="0" max="24" value="8" step="1" />
             </label>
           </section>
 
           <section class="control-section">
             <div class="section-title"><span>FX</span><em>03</em></div>
             <label class="range-control" for="glowInput">
-              <span><b>EDGE GLOW</b><output id="glowValue">28%</output></span>
-              <input id="glowInput" type="range" min="0" max="100" value="28" step="1" />
+              <span><b>EDGE GLOW</b><output id="glowValue">20%</output></span>
+              <input id="glowInput" type="range" min="0" max="100" value="20" step="1" />
+            </label>
+            <label class="range-control" for="sceneDetailInput">
+              <span><b>SCENE DETAIL</b><output id="sceneDetailValue">68%</output></span>
+              <input id="sceneDetailInput" type="range" min="0" max="100" value="68" step="1" />
             </label>
             <div class="color-row">
               <label for="cyanInput"><span>EDGE</span><input id="cyanInput" type="color" value="#39f5ff" /></label>
@@ -142,6 +154,7 @@ CHROME</textarea>
       </section>
     </main>
 
-    <script src="./art-text.js?v=22"></script>
+    <script src="./art-text-fields.js?v=4"></script>
+    <script src="./art-text.js?v=36"></script>
   </body>
 </html>
