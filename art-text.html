@@ -168,12 +168,16 @@ CHROME</textarea>
               <input id="reflectionInput" type="range" min="0" max="100" value="94" step="1" />
             </label>
             <label class="range-control" for="colorFieldInput" data-materials="liquid vhs">
-              <span><b>FIELD STRENGTH</b><output id="colorFieldValue">90%</output></span>
-              <input id="colorFieldInput" type="range" min="0" max="100" value="90" step="1" />
+              <span><b>FIELD STRENGTH</b><output id="colorFieldValue">62%</output></span>
+              <input id="colorFieldInput" type="range" min="0" max="100" value="62" step="1" />
             </label>
             <label class="range-control" for="roughnessInput" data-materials="liquid vhs">
-              <span><b>ROUGHNESS</b><output id="roughnessValue">2%</output></span>
-              <input id="roughnessInput" type="range" min="0" max="100" value="2" step="1" />
+              <span><b>ROUGHNESS</b><output id="roughnessValue">0%</output></span>
+              <input id="roughnessInput" type="range" min="0" max="100" value="0" step="1" />
+            </label>
+            <label class="color-control" for="baseColorInput" data-materials="liquid vhs">
+              <span><b>BASE COLOR</b><small>REFLECTION 0% 时显示</small></span>
+              <input id="baseColorInput" type="color" value="#cfd3e2" />
             </label>
             <label class="range-control" for="liquidWarpInput" data-materials="liquid">
               <span><b>LIQUID WARP</b><output id="liquidWarpValue">6%</output></span>
@@ -225,8 +229,8 @@ CHROME</textarea>
       </section>
     </main>
 
-    <script src="./art-text-presets.js?v=10"></script>
+    <script src="./art-text-presets.js?v=11"></script>
     <script src="./art-text-fields.js?v=12"></script>
-    <script src="./art-text.js?v=56"></script>
+    <script src="./art-text.js?v=57"></script>
   </body>
 </html>

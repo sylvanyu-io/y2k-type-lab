@@ -78,6 +78,7 @@
     colorFieldValue: document.querySelector("#colorFieldValue"),
     roughnessInput: document.querySelector("#roughnessInput"),
     roughnessValue: document.querySelector("#roughnessValue"),
+    baseColorInput: document.querySelector("#baseColorInput"),
     reflectionStyleSelect: document.querySelector("#reflectionStyleSelect"),
     reflectionOffsetXInput: document.querySelector("#reflectionOffsetXInput"),
     reflectionOffsetXValue: document.querySelector("#reflectionOffsetXValue"),
@@ -204,6 +205,7 @@
     uniform float uReflection;
     uniform float uColorFieldStrength;
     uniform float uRoughness;
+    uniform vec3 uBaseColor;
     uniform vec2 uReflectionOffset;
     uniform float uLiquidWarp;
     uniform float uDotPitch;
@@ -716,13 +718,12 @@
       float fresnel = pow(1.0 - clamp(normal.z, 0.0, 1.0), 2.45);
       float areaLight = pow(max(dot(normal, normalize(vec3(-0.38, -0.48, 0.79))), 0.0), 16.0);
       vec3 edgeTint = mix(uPink, uCyan, clamp(normal.x * 0.5 + 0.5, 0.0, 1.0));
-      vec3 chromeLinear = mix(
-        srgbToLinear(vec3(0.25, 0.27, 0.34)),
-        fieldLinear,
-        0.24 + uReflection * 0.76
-      );
-      chromeLinear += vec3(areaLight * mix(0.16, 0.38, uColorFieldStrength));
-      chromeLinear += srgbToLinear(edgeTint) * fresnel * 0.56;
+      // Reflectivity now blends between a lit base material and the selected
+      // reflection field. Lower values no longer behave like exposure loss.
+      vec3 baseLinear = srgbToLinear(uBaseColor) * mix(0.76, 1.04, normal.z);
+      vec3 chromeLinear = mix(baseLinear, fieldLinear, uReflection);
+      chromeLinear += vec3(areaLight * mix(0.10, 0.38, uReflection) * mix(0.72, 1.0, uColorFieldStrength));
+      chromeLinear += srgbToLinear(edgeTint) * fresnel * mix(0.12, 0.56, uReflection);
       chromeLinear *= 0.94 + normal.z * 0.08;
       vec3 chrome = linearToSrgb(acesApprox(chromeLinear * 0.98));
 
@@ -890,6 +891,7 @@
     reflection: gl.getUniformLocation(program, "uReflection"),
     colorFieldStrength: gl.getUniformLocation(program, "uColorFieldStrength"),
     roughness: gl.getUniformLocation(program, "uRoughness"),
+    baseColor: gl.getUniformLocation(program, "uBaseColor"),
     reflectionOffset: gl.getUniformLocation(program, "uReflectionOffset"),
     liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
     dotPitch: gl.getUniformLocation(program, "uDotPitch"),
@@ -1673,6 +1675,7 @@
     gl.uniform1f(locations.reflection, state.reflection / 100);
     gl.uniform1f(locations.colorFieldStrength, state.colorField / 100);
     gl.uniform1f(locations.roughness, state.roughness / 100);
+    gl.uniform3fv(locations.baseColor, hexToRgb(state.baseColor));
     gl.uniform2f(
       locations.reflectionOffset,
       state.reflectionOffsetX / 100,
@@ -1729,6 +1732,7 @@
     ui.reflectionInput.value = String(state.reflection);
     ui.colorFieldInput.value = String(state.colorField);
     ui.roughnessInput.value = String(state.roughness);
+    ui.baseColorInput.value = state.baseColor;
     ui.reflectionStyleSelect.value = state.reflectionStyle;
     ui.reflectionOffsetXInput.value = String(state.reflectionOffsetX);
     ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
@@ -1810,6 +1814,10 @@
   });
   ui.pinkInput.addEventListener("input", (event) => {
     writePresetSetting("pink", event.currentTarget.value);
+    render();
+  });
+  ui.baseColorInput.addEventListener("input", (event) => {
+    writePresetSetting("baseColor", event.currentTarget.value);
     render();
   });
   ui.materialViewButton.addEventListener("click", () => setDebugView(false));
