@@ -402,6 +402,26 @@
         base += vec3(0.08, 0.13, 0.19) * (gridX + gridY) * 0.18 * uSceneDetail;
         return base;
       }
+      if (uMaterialMode > 1.5) {
+        vec3 top = vec3(0.10, 0.12, 0.34);
+        vec3 middle = vec3(0.34, 0.23, 0.56);
+        vec3 bottom = vec3(0.08, 0.04, 0.19);
+        vec3 base = mix(top, middle, smoothstep(0.0, 0.48, uv.y));
+        base = mix(base, bottom, smoothstep(0.48, 1.0, uv.y));
+        float centerLight = exp(-dot(centered * vec2(0.72, 1.22), centered * vec2(0.72, 1.22)) * 3.4);
+        base += vec3(0.34, 0.22, 0.43) * centerLight;
+        float leftBeam = band(uv.x + uv.y * 0.22, 0.22, 0.055);
+        float rightBeam = band(uv.x - uv.y * 0.18, 0.81, 0.060);
+        base += uCyan * leftBeam * 0.075 * uSceneDetail;
+        base += uPink * rightBeam * 0.085 * uSceneDetail;
+        float scanline = 0.5 + 0.5 * sin(uv.y * uTextureSize.y * 3.14159265);
+        base *= 0.86 + scanline * 0.14;
+        float noise = texture2D(uNoiseTexture, uv * vec2(5.0, 2.8125)).b - 0.5;
+        base += vec3(noise * 0.030 * uSceneDetail);
+        float horizon = exp(-260.0 * abs(uv.y - 0.76));
+        base += mix(uPink, uCyan, uv.x) * horizon * 0.16 * uSceneDetail;
+        return base;
+      }
       vec3 top = vec3(0.66, 0.65, 0.97);
       vec3 middle = vec3(0.95, 0.72, 0.93);
       vec3 bottom = vec3(1.00, 0.66, 0.82);
@@ -484,6 +504,49 @@
       return vec4(premultiplied, alpha);
     }
 
+    vec4 vhsChromeMaterial(
+      vec2 uv,
+      float id,
+      vec2 localPx,
+      float surfaceD,
+      float fill,
+      float aa,
+      vec3 chrome
+    ) {
+      float idByte = floor(id * 255.0 + 0.5);
+      float glyphSeed = fract(idByte * 0.6180339);
+      float line = floor((localPx.y + 2048.0) / 3.0);
+      float lineNoise = hash21(vec2(idByte * 1.37, line));
+      float dropout = step(0.93, lineNoise);
+      float offsetPx = (lineNoise * 2.0 - 1.0) * mix(1.4, 4.2, dropout);
+      float redGhost = safeFillAt(
+        uv + vec2(offsetPx / uTextureSize.x, 0.0),
+        id,
+        aa
+      );
+      float cyanGhost = safeFillAt(
+        uv - vec2(offsetPx / uTextureSize.x, 0.0),
+        id,
+        aa
+      );
+
+      float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
+      float outerRing = max(expanded - fill, 0.0);
+      float scanline = 0.86 + 0.14 * (0.5 + 0.5 * sin(localPx.y * 3.14159265));
+      float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
+      vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
+      posterChrome *= scanline * mix(1.0, 0.66, dropout);
+      posterChrome += uCyan * band(localPx.y / 170.0 + glyphSeed, 0.32, 0.16) * 0.14;
+      posterChrome += uPink * band(localPx.y / 180.0 - glyphSeed, -0.18, 0.18) * 0.16;
+
+      vec3 premultiplied = posterChrome * fill;
+      premultiplied += vec3(1.0, 0.08, 0.48) * redGhost * dropout * 0.34;
+      premultiplied += vec3(0.04, 0.92, 1.0) * cyanGhost * dropout * 0.38;
+      premultiplied += mix(uPink, uCyan, glyphSeed) * outerRing * 0.72;
+      float alpha = clamp(max(expanded, max(redGhost, cyanGhost) * dropout), 0.0, 1.0);
+      return vec4(premultiplied, alpha);
+    }
+
     void main() {
       vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
       float id = texture2D(uIdTexture, uv).r;
@@ -497,7 +560,7 @@
         return;
       }
 
-      if (uv.y > 0.78 && uSceneDetail > 0.001) {
+      if (uMaterialMode < 0.5 && uv.y > 0.78 && uSceneDetail > 0.001) {
         float reflectedY = 0.78 - (uv.y - 0.78) / 0.42;
         vec2 reflectedUv = vec2(uv.x, reflectedY);
         vec2 blurStep = vec2(0.0, 4.0 / uTextureSize.y);
@@ -624,6 +687,21 @@
         vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
         vec4 dotMaterial = dotGlitchMaterial(uv, id, localPx, aa);
         color = color * (1.0 - dotMaterial.a) + dotMaterial.rgb;
+        gl_FragColor = vec4(color, 1.0);
+        return;
+      }
+      if (uMaterialMode > 1.5) {
+        vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
+        vec4 vhsMaterial = vhsChromeMaterial(
+          uv,
+          id,
+          localPx,
+          surfaceD,
+          fill,
+          aa,
+          chrome
+        );
+        color = color * (1.0 - vhsMaterial.a) + vhsMaterial.rgb;
         gl_FragColor = vec4(color, 1.0);
         return;
       }
