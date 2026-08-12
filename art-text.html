@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-material="liquid">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -32,20 +32,20 @@
         <aside class="preset-rail" aria-label="艺术字预设">
           <div class="rail-title">
             <span>01</span>
-            <div><strong>MATERIALS</strong><small>SELECT A SURFACE</small></div>
+            <div><strong>MATERIALS</strong><small>3 LIVE SURFACES</small></div>
           </div>
 
-          <button class="preset-card" type="button" disabled aria-label="故障点阵，下一版本">
+          <button class="preset-card" type="button" data-material="dot" aria-pressed="false" disabled>
             <span class="preset-preview dot-preview">GLITCH</span>
             <span class="preset-meta"><b>DOT//GLITCH</b><em>NEXT</em></span>
           </button>
 
-          <button class="preset-card is-active" type="button" aria-pressed="true">
+          <button class="preset-card is-active" type="button" data-material="liquid" aria-pressed="true">
             <span class="preset-preview chrome-preview">CHROME</span>
             <span class="preset-meta"><b>LIQUID//CHROME</b><em>ACTIVE</em></span>
           </button>
 
-          <button class="preset-card" type="button" disabled aria-label="霓虹镀铬，下一版本">
+          <button class="preset-card" type="button" data-material="vhs" aria-pressed="false" disabled>
             <span class="preset-preview vhs-preview">Y2K</span>
             <span class="preset-meta"><b>VHS//CHROME</b><em>NEXT</em></span>
           </button>
@@ -68,7 +68,7 @@
           </div>
 
           <div class="artboard-frame">
-            <canvas id="artCanvas" aria-label="Y2K 液态铬艺术字预览"></canvas>
+            <canvas id="artCanvas" aria-label="液态铬艺术字预览"></canvas>
             <div class="corner-mark top-left" aria-hidden="true"></div>
             <div class="corner-mark top-right" aria-hidden="true"></div>
             <div class="corner-mark bottom-left" aria-hidden="true"></div>
@@ -86,7 +86,7 @@
         <aside class="inspector" aria-label="艺术字参数">
           <div class="rail-title inspector-title">
             <span>02</span>
-            <div><strong>INSPECTOR</strong><small>LIQUID//CHROME</small></div>
+            <div><strong>INSPECTOR</strong><small id="inspectorMaterialName">LIQUID//CHROME</small></div>
           </div>
 
           <section class="control-section">
@@ -154,7 +154,8 @@ CHROME</textarea>
       </section>
     </main>
 
+    <script src="./art-text-presets.js?v=1"></script>
     <script src="./art-text-fields.js?v=4"></script>
-    <script src="./art-text.js?v=36"></script>
+    <script src="./art-text.js?v=37"></script>
   </body>
 </html>

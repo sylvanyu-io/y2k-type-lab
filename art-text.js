@@ -15,20 +15,18 @@
     createNoiseField,
     createReflectionColorField,
   } = window.ArtTextFields;
+  const {
+    defaultKey: DEFAULT_PRESET_KEY,
+    order: PRESET_ORDER,
+    byKey: PRESETS,
+  } = window.ArtTextPresets;
 
   const DEFAULTS = Object.freeze({
     text: "Y2K\nCHROME",
     tracking: 4,
     lineHeight: 0.88,
-    edgeWidth: 8,
-    bodyCrown: 16,
-    reflection: 88,
-    colorField: 82,
-    extrusion: 8,
-    glow: 20,
-    sceneDetail: 68,
-    cyan: "#39f5ff",
-    pink: "#ff2bd6",
+    activePreset: DEFAULT_PRESET_KEY,
+    ...PRESETS[DEFAULT_PRESET_KEY].settings,
   });
 
   const ui = {
@@ -38,6 +36,12 @@
     renderStatus: document.querySelector("#renderStatus"),
     buildTime: document.querySelector("#buildTime"),
     glyphReadout: document.querySelector("#glyphReadout"),
+    inspectorMaterialName: document.querySelector("#inspectorMaterialName"),
+    presetCards: [...document.querySelectorAll(".preset-card[data-material]")],
+    previewCanvases: new Map(
+      [...document.querySelectorAll("canvas[data-material-preview]")]
+        .map((canvas) => [canvas.dataset.materialPreview, canvas]),
+    ),
     resetButton: document.querySelector("#resetButton"),
     materialViewButton: document.querySelector("#materialViewButton"),
     idViewButton: document.querySelector("#idViewButton"),
@@ -65,6 +69,35 @@
   };
 
   const state = { ...DEFAULTS, debugId: false, glyphs: [] };
+
+  function activePreset() {
+    return PRESETS[state.activePreset] || PRESETS[DEFAULT_PRESET_KEY];
+  }
+
+  function syncPresetSelection() {
+    const preset = activePreset();
+    document.documentElement.dataset.material = preset.key;
+    ui.inspectorMaterialName.textContent = preset.label;
+    ui.canvas.setAttribute("aria-label", preset.ariaLabel);
+    ui.presetCards.forEach((card) => {
+      const isActive = card.dataset.material === preset.key;
+      card.classList.toggle("is-active", isActive);
+      card.setAttribute("aria-pressed", String(isActive));
+      const status = card.querySelector(".preset-meta em");
+      if (status && !card.disabled) status.textContent = isActive ? "ACTIVE" : "SELECT";
+    });
+  }
+
+  function selectPreset(key, { applyDefaults = true } = {}) {
+    const preset = PRESETS[key];
+    if (!preset) return;
+    state.activePreset = key;
+    if (applyDefaults) Object.assign(state, preset.settings);
+    syncControls();
+    syncPresetSelection();
+    setDebugView(false);
+    render();
+  }
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = TEXTURE_WIDTH;
   sourceCanvas.height = TEXTURE_HEIGHT;
@@ -1107,11 +1140,17 @@
   });
   ui.materialViewButton.addEventListener("click", () => setDebugView(false));
   ui.idViewButton.addEventListener("click", () => setDebugView(true));
+  ui.presetCards.forEach((card) => {
+    card.addEventListener("click", () => {
+      if (!card.disabled) selectPreset(card.dataset.material);
+    });
+  });
   ui.resetButton.addEventListener("click", () => {
-    Object.assign(state, DEFAULTS, { debugId: false });
+    Object.assign(state, activePreset().settings, { debugId: false });
     syncControls();
     setDebugView(false);
-    rebuildTextures();
+    syncPresetSelection();
+    render();
   });
   window.addEventListener("resize", render, { passive: true });
 
@@ -1123,5 +1162,6 @@
   buildNoiseTexture();
   buildReflectionColorField();
   syncControls();
+  syncPresetSelection();
   document.fonts.ready.then(rebuildTextures);
 })();

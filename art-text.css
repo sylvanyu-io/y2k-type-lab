@@ -126,8 +126,11 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   text-align: left;
   transition: 150ms ease-out;
 }
-.preset-card:disabled { cursor: default; opacity: 0.48; }
+.preset-card:hover { border-color: var(--line-hot); transform: translateY(-1px); }
+.preset-card:active { transform: translateY(0); }
+.preset-card:disabled { cursor: default; opacity: 0.48; transform: none; }
 .preset-card.is-active { border-color: var(--cyan); box-shadow: 0 0 0 1px rgba(57,245,255,0.16), 0 0 22px rgba(57,245,255,0.06); }
+.preset-card.is-active .preset-meta em { color: var(--text); }
 .preset-preview {
   display: grid;
   height: 92px;
