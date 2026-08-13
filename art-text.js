@@ -23,12 +23,14 @@
     rose: "ROSE CITADEL",
     arctic: "ICE CITADEL",
     sunset: "SOLAR OBSIDIAN",
+    prism: "PRISM MERCURY",
     custom: "CUSTOM URL",
   });
   const REFLECTION_SOURCES = Object.freeze({
     rose: "./assets/reflection-fields/rose-citadel.webp?v=2",
     arctic: "./assets/reflection-fields/ice-citadel.webp?v=3",
     sunset: "./assets/reflection-fields/solar-obsidian.webp?v=3",
+    prism: "./assets/reflection-fields/prism-spectrum.webp?v=2",
   });
   const PRESET_SETTING_KEYS = Object.freeze([...new Set(
     PRESET_ORDER.flatMap((key) => Object.keys(PRESETS[key].settings)),
