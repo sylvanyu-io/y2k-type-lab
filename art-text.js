@@ -11,6 +11,12 @@
   // budget so one control cannot consume or amplify the other's response.
   const BODY_MAX_SLOPE = 0.45;
   const FACE_MAX_SLOPE = 0.30;
+  const DEFAULT_GLYPH_TRANSFORM = Object.freeze({ x: 0, y: 0, rotation: 0, scale: 1 });
+  const GLYPH_HANDLE_OFFSET_CSS = 28;
+  const GLYPH_HANDLE_RADIUS_CSS = 12;
+  // Keep the editor hit-test and the DOT presentation shader on one mapping.
+  const DOT_PERSPECTIVE_MAX = 90;
+  const DOT_PERSPECTIVE_TOP_SCALE = 0.664;
   const INF = 1e20;
   const DISPLAY_FONT = '"Arial Rounded MT Bold", "Yuanti SC", "Hiragino Maru Gothic ProN", "Avenir Next", "PingFang SC", sans-serif';
   const DOT_DISPLAY_FONT = '"Arial Black", "Impact", "Arial Narrow Bold", "PingFang SC", sans-serif';
@@ -124,14 +130,31 @@
     sceneDetailValue: document.querySelector("#sceneDetailValue"),
     cyanInput: document.querySelector("#cyanInput"),
     pinkInput: document.querySelector("#pinkInput"),
+    glyphTransformOverlay: document.querySelector("#glyphTransformOverlay"),
+    glyphSelectionBox: document.querySelector("#glyphSelectionBox"),
+    glyphRotateStem: document.querySelector("#glyphRotateStem"),
+    glyphRotateHandle: document.querySelector("#glyphRotateHandle"),
+    glyphScaleHandle: document.querySelector("#glyphScaleHandle"),
+    glyphTransformControls: document.querySelector("#glyphTransformControls"),
+    selectedGlyphLabel: document.querySelector("#selectedGlyphLabel"),
+    glyphOffsetXInput: document.querySelector("#glyphOffsetXInput"),
+    glyphOffsetYInput: document.querySelector("#glyphOffsetYInput"),
+    glyphRotationInput: document.querySelector("#glyphRotationInput"),
+    glyphScaleInput: document.querySelector("#glyphScaleInput"),
+    resetGlyphTransformButton: document.querySelector("#resetGlyphTransformButton"),
+    resetAllGlyphTransformsButton: document.querySelector("#resetAllGlyphTransformsButton"),
   };
 
   const state = {
     ...DEFAULTS,
     debugId: false,
     glyphs: [],
+    selectedGlyphKey: null,
+    glyphTransforms: new Map(),
     artworkBounds: [0.5, 0.5, 0.90, 0.78],
   };
+  let nextGlyphKey = 1;
+  let latestIdPixels = null;
 
   function activePreset() {
     return PRESETS[state.activePreset] || PRESETS[DEFAULT_PRESET_KEY];
@@ -145,7 +168,7 @@
     const preset = activePreset();
     document.documentElement.dataset.material = preset.key;
     ui.inspectorMaterialName.textContent = preset.label;
-    ui.canvas.setAttribute("aria-label", preset.ariaLabel);
+    ui.canvas.setAttribute("aria-label", `${preset.ariaLabel}，可点击字符并拖动编辑`);
     ui.presetCards.forEach((card) => {
       const isActive = card.dataset.materialPreset === preset.key;
       card.classList.toggle("is-active", isActive);
@@ -263,10 +286,10 @@
       vec4 centerBytes = texture(uGlyphMetadataTexture, vec2(lookupX, 0.25));
       vec4 sizeBytes = texture(uGlyphMetadataTexture, vec2(lookupX, 0.75));
       return vec4(
-        unpackMetadata16(centerBytes.rg),
-        unpackMetadata16(centerBytes.ba),
-        unpackMetadata16(sizeBytes.rg),
-        unpackMetadata16(sizeBytes.ba)
+        unpackMetadata16(centerBytes.rg) * 3.0 - 1.0,
+        unpackMetadata16(centerBytes.ba) * 3.0 - 1.0,
+        unpackMetadata16(sizeBytes.rg) * 3.0,
+        unpackMetadata16(sizeBytes.ba) * 3.0
       );
     }
 
@@ -1009,14 +1032,19 @@
         vec2(-0.75),
         vec2(0.75)
       );
-      float semanticId = texture(uIdTexture, uv).g;
+      vec4 semanticSample = texture(uIdTexture, uv);
+      float semanticId = semanticSample.g;
       float hasSemanticId = step(0.5 / 255.0, semanticId);
       float semanticWeight = hasSemanticId
         * smoothstep(0.55, 0.90, centerShape.y);
       vec4 glyphMetadata = glyphMetadataForId(semanticId);
+      vec2 glyphAxis = normalize(
+        (semanticSample.rb * 255.0 - 128.0) / 127.0 + vec2(0.00001, 0.0)
+      );
+      mat2 glyphFrame = mat2(glyphAxis.x, glyphAxis.y, -glyphAxis.y, glyphAxis.x);
       vec2 glyphSize = max(glyphMetadata.zw, vec2(1.0) / uTextureSize);
       vec2 glyphLocal = clamp(
-        (uv - glyphMetadata.xy) / glyphSize,
+        transpose(glyphFrame) * (uv - glyphMetadata.xy) / glyphSize,
         vec2(-0.75),
         vec2(0.75)
       );
@@ -1111,7 +1139,7 @@
       color += mix(uPink, uCyan, uv.x) * glow * 0.28;
       if (uMaterialMode > 1.5) {
         vec2 artworkLocalPx = artworkLocal * artworkSize * uTextureSize;
-        vec2 glyphLocalPx = (uv - glyphMetadata.xy) * uTextureSize;
+        vec2 glyphLocalPx = transpose(glyphFrame) * (uv - glyphMetadata.xy) * uTextureSize;
         vec2 signalLocalPx = mix(artworkLocalPx, glyphLocalPx, semanticWeight);
         float signalSeed = mix(0.381966, glyphSeed, semanticWeight);
         vec4 vhsMaterial = vhsChromeMaterial(
@@ -1238,13 +1266,13 @@
     }
 
     void main() {
-      float perspective = clamp(uPerspectiveAngle / 90.0, 0.0, 1.0);
+      float perspective = clamp(uPerspectiveAngle / ${DOT_PERSPECTIVE_MAX.toFixed(1)}, 0.0, 1.0);
       // The complete 1600x900 DOT bake is projected once here. vUv.y is zero
       // at the visual bottom, so the upper edge narrows while the bottom stays
       // anchored at full width.
       // Preserve the original 0-75 degree response exactly, then allow the
       // same linear taper to continue through the new 90 degree endpoint.
-      float topScale = mix(1.0, 0.664, perspective);
+      float topScale = mix(1.0, ${DOT_PERSPECTIVE_TOP_SCALE.toFixed(3)}, perspective);
       float perspectiveRow = clamp((vUv.y - 0.05) / 0.90, 0.0, 1.0);
       float rowScale = mix(1.0, topScale, perspectiveRow);
       float sourceX = 0.5 + (vUv.x - 0.5) / max(rowScale, 0.01);
@@ -1942,6 +1970,364 @@
     return Array.from(value);
   }
 
+  function glyphTransformForKey(key) {
+    return state.glyphTransforms.get(key) || DEFAULT_GLYPH_TRANSFORM;
+  }
+
+  function transformsEqual(a, b) {
+    return Math.abs(a.x - b.x) < 0.001
+      && Math.abs(a.y - b.y) < 0.001
+      && Math.abs(a.rotation - b.rotation) < 0.001
+      && Math.abs(a.scale - b.scale) < 0.0001;
+  }
+
+  function writeGlyphTransform(key, nextTransform) {
+    const normalized = {
+      x: Number.isFinite(nextTransform.x) ? nextTransform.x : 0,
+      y: Number.isFinite(nextTransform.y) ? nextTransform.y : 0,
+      rotation: Number.isFinite(nextTransform.rotation) ? ((nextTransform.rotation + 180) % 360 + 360) % 360 - 180 : 0,
+      scale: Number.isFinite(nextTransform.scale) ? Math.max(0.2, Math.min(3, nextTransform.scale)) : 1,
+    };
+    if (transformsEqual(normalized, DEFAULT_GLYPH_TRANSFORM)) state.glyphTransforms.delete(key);
+    else state.glyphTransforms.set(key, normalized);
+    return normalized;
+  }
+
+  function lcsCellIndex(row, column, columnCount) {
+    return row * columnCount + column;
+  }
+
+  function assignGlyphKeys(lines) {
+    const previous = state.glyphs.map((record) => ({
+      glyph: record.glyph,
+      lineIndex: record.lineIndex,
+      key: record.key,
+    }));
+    const nextGlyphs = [];
+    lines.forEach((line, lineIndex) => {
+      line.forEach((glyph) => {
+        if (glyph.trim() !== "") nextGlyphs.push({ glyph, lineIndex });
+      });
+    });
+    const sameGlyph = (oldGlyph, newGlyph) => (
+      oldGlyph.glyph === newGlyph.glyph && oldGlyph.lineIndex === newGlyph.lineIndex
+    );
+    const previousLength = previous.length;
+    const nextLength = nextGlyphs.length;
+    const columnCount = nextLength + 1;
+    const table = new Uint16Array((previousLength + 1) * columnCount);
+    for (let oldIndex = previousLength - 1; oldIndex >= 0; oldIndex -= 1) {
+      for (let newIndex = nextLength - 1; newIndex >= 0; newIndex -= 1) {
+        const cell = lcsCellIndex(oldIndex, newIndex, columnCount);
+        table[cell] = sameGlyph(previous[oldIndex], nextGlyphs[newIndex])
+          ? table[lcsCellIndex(oldIndex + 1, newIndex + 1, columnCount)] + 1
+          : Math.max(
+            table[lcsCellIndex(oldIndex + 1, newIndex, columnCount)],
+            table[lcsCellIndex(oldIndex, newIndex + 1, columnCount)],
+          );
+      }
+    }
+    const keys = new Array(nextLength).fill(null);
+    let oldIndex = 0;
+    let newIndex = 0;
+    while (oldIndex < previousLength && newIndex < nextLength) {
+      if (sameGlyph(previous[oldIndex], nextGlyphs[newIndex])) {
+        keys[newIndex] = previous[oldIndex].key;
+        oldIndex += 1;
+        newIndex += 1;
+      } else if (
+        table[lcsCellIndex(oldIndex + 1, newIndex, columnCount)]
+        >= table[lcsCellIndex(oldIndex, newIndex + 1, columnCount)]
+      ) {
+        oldIndex += 1;
+      } else {
+        newIndex += 1;
+      }
+    }
+    keys.forEach((key, index) => {
+      if (!key) keys[index] = `glyph-${nextGlyphKey++}`;
+    });
+    const liveKeys = new Set(keys);
+    [...state.glyphTransforms.keys()].forEach((key) => {
+      if (!liveKeys.has(key)) state.glyphTransforms.delete(key);
+    });
+    if (state.selectedGlyphKey && !liveKeys.has(state.selectedGlyphKey)) state.selectedGlyphKey = null;
+    return keys;
+  }
+
+  function glyphBaseCorners(record) {
+    return [
+      { x: record.baseInkLeft, y: record.baseInkTop },
+      { x: record.baseInkRight, y: record.baseInkTop },
+      { x: record.baseInkRight, y: record.baseInkBottom },
+      { x: record.baseInkLeft, y: record.baseInkBottom },
+    ];
+  }
+
+  function transformPoint(point, record, transform = record.transform) {
+    const radians = transform.rotation * Math.PI / 180;
+    const cosine = Math.cos(radians);
+    const sine = Math.sin(radians);
+    const localX = (point.x - record.baseCenterX) * transform.scale;
+    const localY = (point.y - record.baseCenterY) * transform.scale;
+    return {
+      x: record.baseCenterX + transform.x + localX * cosine - localY * sine,
+      y: record.baseCenterY + transform.y + localX * sine + localY * cosine,
+    };
+  }
+
+  function glyphCornersForTransform(record, transform) {
+    return glyphBaseCorners(record).map((point) => transformPoint(point, record, transform));
+  }
+
+  function dotRowScaleForBakeY(bakeY) {
+    if (activePreset().mode !== 1 || state.debugId) return 1;
+    const perspective = Math.max(0, Math.min(1, state.perspectiveAngle / DOT_PERSPECTIVE_MAX));
+    const topScale = 1 + (DOT_PERSPECTIVE_TOP_SCALE - 1) * perspective;
+    const visualY = 1 - bakeY / TEXTURE_HEIGHT;
+    const row = Math.max(0, Math.min(1, (visualY - 0.05) / 0.90));
+    return 1 + (topScale - 1) * row;
+  }
+
+  function projectBakePoint(point) {
+    const rowScale = dotRowScaleForBakeY(point.y);
+    return { x: TEXTURE_WIDTH * 0.5 + (point.x - TEXTURE_WIDTH * 0.5) * rowScale, y: point.y };
+  }
+
+  function unprojectDisplayPoint(point, rejectOutside = false) {
+    const rowScale = dotRowScaleForBakeY(point.y);
+    const normalizedX = point.x / TEXTURE_WIDTH;
+    if (rejectOutside && activePreset().mode === 1 && !state.debugId
+      && Math.abs(normalizedX - 0.5) > rowScale * 0.5) return null;
+    return { x: TEXTURE_WIDTH * 0.5 + (point.x - TEXTURE_WIDTH * 0.5) / rowScale, y: point.y };
+  }
+
+  function canvasClientToDisplayPoint(clientX, clientY) {
+    const rect = ui.canvas.getBoundingClientRect();
+    const width = ui.canvas.clientWidth;
+    const height = ui.canvas.clientHeight;
+    if (width <= 0 || height <= 0) return null;
+    return {
+      x: (clientX - rect.left - ui.canvas.clientLeft) / width * TEXTURE_WIDTH,
+      y: (clientY - rect.top - ui.canvas.clientTop) / height * TEXTURE_HEIGHT,
+    };
+  }
+
+  function canvasClientToBakePoint(clientX, clientY, rejectOutside = false) {
+    const displayPoint = canvasClientToDisplayPoint(clientX, clientY);
+    return displayPoint ? unprojectDisplayPoint(displayPoint, rejectOutside) : null;
+  }
+
+  function updateGlyphGeometry(record) {
+    record.transform = glyphTransformForKey(record.key);
+    record.corners = glyphBaseCorners(record).map((point) => transformPoint(point, record));
+    record.centerX = record.baseCenterX + record.transform.x;
+    record.centerY = record.baseCenterY + record.transform.y;
+    record.inkLeft = Math.min(...record.corners.map((point) => point.x));
+    record.inkRight = Math.max(...record.corners.map((point) => point.x));
+    record.inkTop = Math.min(...record.corners.map((point) => point.y));
+    record.inkBottom = Math.max(...record.corners.map((point) => point.y));
+  }
+
+  function selectedGlyphRecord() {
+    return state.glyphs.find((record) => record.key === state.selectedGlyphKey) || null;
+  }
+
+  function syncOverlayBounds() {
+    const canvasRect = ui.canvas.getBoundingClientRect();
+    const frameRect = ui.canvas.parentElement.getBoundingClientRect();
+    ui.glyphTransformOverlay.style.left = `${canvasRect.left - frameRect.left + ui.canvas.clientLeft}px`;
+    ui.glyphTransformOverlay.style.top = `${canvasRect.top - frameRect.top + ui.canvas.clientTop}px`;
+    ui.glyphTransformOverlay.style.width = `${ui.canvas.clientWidth}px`;
+    ui.glyphTransformOverlay.style.height = `${ui.canvas.clientHeight}px`;
+  }
+
+  function pointsAttribute(points) {
+    return points.map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`).join(" ");
+  }
+
+  function syncGlyphTransformUi(draftTransform = null) {
+    syncOverlayBounds();
+    const record = selectedGlyphRecord();
+    ui.glyphTransformControls.hidden = !record;
+    ui.glyphTransformOverlay.toggleAttribute("hidden", !record);
+    if (!record) return;
+    const transform = draftTransform || glyphTransformForKey(record.key);
+    const corners = glyphCornersForTransform(record, transform).map(projectBakePoint);
+    const topCenter = {
+      x: (corners[0].x + corners[1].x) * 0.5,
+      y: (corners[0].y + corners[1].y) * 0.5,
+    };
+    const center = projectBakePoint({
+      x: record.baseCenterX + transform.x,
+      y: record.baseCenterY + transform.y,
+    });
+    const stemVector = { x: topCenter.x - center.x, y: topCenter.y - center.y };
+    const stemLength = Math.hypot(stemVector.x, stemVector.y) || 1;
+    const handleUnitScale = Math.max(
+      TEXTURE_WIDTH / Math.max(1, ui.canvas.clientWidth),
+      TEXTURE_HEIGHT / Math.max(1, ui.canvas.clientHeight),
+    );
+    const handleOffset = GLYPH_HANDLE_OFFSET_CSS * handleUnitScale;
+    const handleRadius = GLYPH_HANDLE_RADIUS_CSS * handleUnitScale;
+    const rotateHandle = {
+      x: topCenter.x + stemVector.x / stemLength * handleOffset,
+      y: topCenter.y + stemVector.y / stemLength * handleOffset,
+    };
+    const scaleHandle = corners[2];
+    ui.glyphSelectionBox.setAttribute("points", pointsAttribute(corners));
+    ui.glyphRotateStem.setAttribute("x1", topCenter.x);
+    ui.glyphRotateStem.setAttribute("y1", topCenter.y);
+    ui.glyphRotateStem.setAttribute("x2", rotateHandle.x);
+    ui.glyphRotateStem.setAttribute("y2", rotateHandle.y);
+    ui.glyphRotateHandle.setAttribute("cx", rotateHandle.x);
+    ui.glyphRotateHandle.setAttribute("cy", rotateHandle.y);
+    ui.glyphRotateHandle.setAttribute("r", handleRadius);
+    ui.glyphScaleHandle.setAttribute("cx", scaleHandle.x);
+    ui.glyphScaleHandle.setAttribute("cy", scaleHandle.y);
+    ui.glyphScaleHandle.setAttribute("r", handleRadius);
+    ui.selectedGlyphLabel.textContent = record.glyph;
+    const transformInputs = [
+      [ui.glyphOffsetXInput, Math.round(transform.x)],
+      [ui.glyphOffsetYInput, Math.round(transform.y)],
+      [ui.glyphRotationInput, Math.round(transform.rotation)],
+      [ui.glyphScaleInput, Math.round(transform.scale * 100)],
+    ];
+    transformInputs.forEach(([input, value]) => {
+      if (document.activeElement !== input) input.value = String(value);
+    });
+  }
+
+  function selectGlyph(key) {
+    state.selectedGlyphKey = key || null;
+    syncGlyphTransformUi();
+    const record = selectedGlyphRecord();
+    ui.materialAnnouncement.textContent = record
+      ? `已选中字符 ${record.glyph}，第 ${state.glyphs.indexOf(record) + 1} 个，共 ${state.glyphs.length} 个`
+      : "已取消字符选择";
+    ui.canvas.focus({ preventScroll: true });
+  }
+
+  function announceGlyphTransform(record) {
+    if (!record) return;
+    const transform = glyphTransformForKey(record.key);
+    ui.materialAnnouncement.textContent = `字符 ${record.glyph}：X ${Math.round(transform.x)}，Y ${Math.round(transform.y)}，旋转 ${Math.round(transform.rotation)} 度，缩放 ${Math.round(transform.scale * 100)}%`;
+  }
+
+  function activeGestureTransform(record) {
+    return glyphGesture && glyphGesture.key === record.key
+      ? glyphTransformForKey(record.key)
+      : record.transform;
+  }
+
+  function idByteAtBakePoint(point) {
+    if (!latestIdPixels || !point) return 0;
+    const x = Math.max(0, Math.min(TEXTURE_WIDTH - 1, Math.floor(point.x)));
+    const y = Math.max(0, Math.min(TEXTURE_HEIGHT - 1, Math.floor(point.y)));
+    return latestIdPixels[(y * TEXTURE_WIDTH + x) * 4 + 1];
+  }
+
+  function recordAtBakePoint(point) {
+    const idByte = idByteAtBakePoint(point);
+    return idByte ? state.glyphs.find((record) => record.idByte === idByte) || null : null;
+  }
+
+  let glyphGesture = null;
+  let gestureBakeTimer = 0;
+  function scheduleGestureBake() {
+    window.clearTimeout(gestureBakeTimer);
+    gestureBakeTimer = window.setTimeout(() => {
+      gestureBakeTimer = 0;
+      // Keep the lightweight overlay live during the gesture; the expensive
+      // merged EDT/normal rebuild remains coalesced after pointer activity.
+      scheduleRebuild();
+    }, 90);
+  }
+
+  function scheduleFinalGestureBake() {
+    window.clearTimeout(rebuildTimer);
+    window.clearTimeout(normalBakeTimer);
+    geometryRebuildPending = true;
+    rebuildTimer = window.setTimeout(() => {
+      geometryRebuildPending = false;
+      rebuildTextures();
+    }, 0);
+  }
+
+  function finishGlyphGesture(event = null) {
+    if (!glyphGesture) return;
+    if (event && event.pointerId !== undefined && event.pointerId !== glyphGesture.pointerId) return;
+    const completedGesture = glyphGesture;
+    if (gestureBakeTimer) window.clearTimeout(gestureBakeTimer);
+    gestureBakeTimer = 0;
+    if (completedGesture.captureTarget
+      && typeof completedGesture.captureTarget.releasePointerCapture === "function") {
+      completedGesture.captureTarget.releasePointerCapture(completedGesture.pointerId);
+    }
+    glyphGesture = null;
+    scheduleFinalGestureBake();
+    announceGlyphTransform(state.glyphs.find((record) => record.key === completedGesture.key));
+  }
+
+  function beginGlyphGesture(event, mode, record) {
+    const point = canvasClientToBakePoint(event.clientX, event.clientY);
+    if (!point) return;
+    const transform = { ...glyphTransformForKey(record.key) };
+    const pivot = { x: record.baseCenterX + transform.x, y: record.baseCenterY + transform.y };
+    glyphGesture = {
+      pointerId: event.pointerId,
+      mode,
+      key: record.key,
+      startPoint: point,
+      startTransform: transform,
+      pivot,
+      startAngle: Math.atan2(point.y - pivot.y, point.x - pivot.x),
+      startDistance: Math.max(1, Math.hypot(point.x - pivot.x, point.y - pivot.y)),
+      captureTarget: event.currentTarget,
+    };
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    if (typeof event.currentTarget.addEventListener === "function") {
+      event.currentTarget.addEventListener("lostpointercapture", finishGlyphGesture, { once: true });
+    }
+    event.preventDefault();
+  }
+
+  function updateGlyphGesture(event) {
+    if (!glyphGesture || glyphGesture.pointerId !== event.pointerId) return;
+    const point = canvasClientToBakePoint(event.clientX, event.clientY);
+    const record = state.glyphs.find((item) => item.key === glyphGesture.key);
+    if (!point || !record) return;
+    const next = { ...glyphGesture.startTransform };
+    if (glyphGesture.mode === "move") {
+      next.x += point.x - glyphGesture.startPoint.x;
+      next.y += point.y - glyphGesture.startPoint.y;
+    } else if (glyphGesture.mode === "rotate") {
+      let rotationDelta = (Math.atan2(point.y - glyphGesture.pivot.y, point.x - glyphGesture.pivot.x) - glyphGesture.startAngle) * 180 / Math.PI;
+      if (event.shiftKey) rotationDelta = Math.round(rotationDelta / 15) * 15;
+      next.rotation += rotationDelta;
+    } else if (glyphGesture.mode === "scale") {
+      const distance = Math.hypot(point.x - glyphGesture.pivot.x, point.y - glyphGesture.pivot.y);
+      next.scale *= distance / glyphGesture.startDistance;
+    }
+    const normalized = writeGlyphTransform(record.key, next);
+    syncGlyphTransformUi(normalized);
+    scheduleGestureBake();
+    event.preventDefault();
+  }
+
+  function drawGlyphRecord(context, record) {
+    const transform = activeGestureTransform(record) || glyphTransformForKey(record.key);
+    context.save();
+    context.translate(record.baseCenterX + transform.x, record.baseCenterY + transform.y);
+    context.rotate(transform.rotation * Math.PI / 180);
+    context.scale(transform.scale, transform.scale);
+    context.translate(-record.baseCenterX, -record.baseCenterY);
+    context.fillText(record.glyph, record.x, record.baseline);
+    context.restore();
+  }
+
   function measureLine(glyphs, fontSize) {
     sourceContext.font = `900 ${fontSize}px ${activeDisplayFont()}`;
     return glyphs.reduce(
@@ -2029,6 +2415,14 @@
   function encodeNormalized16(value) {
     const packed = Math.round(Math.max(0, Math.min(1, value)) * 65535);
     return [packed >> 8, packed & 255];
+  }
+
+  function encodeGlyphMetadataCenter(value) {
+    return encodeNormalized16((value + 1) / 3);
+  }
+
+  function encodeGlyphMetadataSize(value) {
+    return encodeNormalized16(value / 3);
   }
 
   function writeArtworkNormalMap(
@@ -2202,7 +2596,7 @@
       if (width <= 0 || height <= 0) return;
 
       idContext.clearRect(left, top, width, height);
-      idContext.fillText(record.glyph, record.x, record.baseline);
+      drawGlyphRecord(idContext, record);
       const mask = idContext.getImageData(left, top, width, height).data;
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
@@ -2219,12 +2613,26 @@
       }
     });
 
+    const rotationRById = new Uint8Array(256);
+    const rotationBById = new Uint8Array(256);
+    rotationRById.fill(255);
+    rotationBById.fill(128);
+    glyphs.forEach((record) => {
+      const transform = activeGestureTransform(record) || DEFAULT_GLYPH_TRANSFORM;
+      const radians = transform.rotation * Math.PI / 180;
+      rotationRById[record.idByte] = Math.round(Math.cos(radians) * 127 + 128);
+      rotationBById[record.idByte] = Math.round(Math.sin(radians) * 127 + 128);
+    });
     const idPixels = new Uint8Array(pixelCount * 4);
     for (let pixel = 0; pixel < pixelCount; pixel += 1) {
       const output = pixel * 4;
       const idByte = alphaPixels[output + 3] > 0 ? semanticIds[pixel] : 0;
-      idPixels[output] = idByte;
+      // G remains the discrete semantic ID. R/B carry the owning glyph's
+      // local rotation so the existing ID lookup also rotates local material
+      // coordinates without adding another runtime texture fetch.
+      idPixels[output] = rotationRById[idByte];
       idPixels[output + 1] = idByte;
+      idPixels[output + 2] = rotationBById[idByte];
       idPixels[output + 3] = 255;
     }
     return idPixels;
@@ -2233,14 +2641,15 @@
   function createGlyphMetadataPixels(glyphs) {
     const pixels = new Uint8Array(256 * 2 * 4);
     glyphs.forEach((record) => {
-      const centerX = (record.inkLeft + record.inkRight) * 0.5 / TEXTURE_WIDTH;
-      const centerY = (record.inkTop + record.inkBottom) * 0.5 / TEXTURE_HEIGHT;
-      const width = Math.max(1, record.inkRight - record.inkLeft) / TEXTURE_WIDTH;
-      const height = Math.max(1, record.inkBottom - record.inkTop) / TEXTURE_HEIGHT;
-      const centerXBytes = encodeNormalized16(centerX);
-      const centerYBytes = encodeNormalized16(centerY);
-      const widthBytes = encodeNormalized16(width);
-      const heightBytes = encodeNormalized16(height);
+      const transform = activeGestureTransform(record) || DEFAULT_GLYPH_TRANSFORM;
+      const centerX = (record.baseCenterX + transform.x) / TEXTURE_WIDTH;
+      const centerY = (record.baseCenterY + transform.y) / TEXTURE_HEIGHT;
+      const width = Math.max(1, record.baseInkRight - record.baseInkLeft) * transform.scale / TEXTURE_WIDTH;
+      const height = Math.max(1, record.baseInkBottom - record.baseInkTop) * transform.scale / TEXTURE_HEIGHT;
+      const centerXBytes = encodeGlyphMetadataCenter(centerX);
+      const centerYBytes = encodeGlyphMetadataCenter(centerY);
+      const widthBytes = encodeGlyphMetadataSize(width);
+      const heightBytes = encodeGlyphMetadataSize(height);
       const centerOffset = record.idByte * 4;
       const sizeOffset = (256 + record.idByte) * 4;
       pixels[centerOffset] = centerXBytes[0];
@@ -2262,6 +2671,7 @@
     ui.renderStatus.textContent = "BUILDING SDF";
     const rawLines = state.text.replace(/\r/g, "").split("\n").slice(0, 3);
     const lines = rawLines.map((line) => segmentText(line).slice(0, 18));
+    const glyphKeys = assignGlyphKeys(lines);
     const layout = fitLayout(lines);
     const lineHeightPx = layout.fontSize * state.lineHeight;
     const firstBaseline = (TEXTURE_HEIGHT - layout.totalHeight) * 0.5 + layout.fontSize * 0.80;
@@ -2291,20 +2701,25 @@
           const inkRight = x + (metrics.actualBoundingBoxRight || width);
           const inkTop = baseline - (metrics.actualBoundingBoxAscent || layout.fontSize * 0.78);
           const inkBottom = baseline + (metrics.actualBoundingBoxDescent || layout.fontSize * 0.20);
-          sourceContext.fillText(glyph, x, baseline);
-          records.push({
+          const record = {
             glyph,
+            key: glyphKeys[glyphIndex],
             idByte,
             x,
             width,
-            inkLeft,
-            inkRight,
-            inkTop,
-            inkBottom,
+            baseInkLeft: inkLeft,
+            baseInkRight: inkRight,
+            baseInkTop: inkTop,
+            baseInkBottom: inkBottom,
+            baseCenterX: (inkLeft + inkRight) * 0.5,
+            baseCenterY: (inkTop + inkBottom) * 0.5,
             baseline,
             lineIndex,
             index,
-          });
+          };
+          updateGlyphGeometry(record);
+          drawGlyphRecord(sourceContext, record);
+          records.push(record);
           glyphIndex += 1;
         }
         x += width + (index < glyphs.length - 1 ? state.tracking : 0);
@@ -2350,6 +2765,7 @@
       ]
       : [0.5, 0.5, 0.90, 0.78];
     const idPixels = createSemanticIdPixels(alphaPixels, state.glyphs);
+    latestIdPixels = idPixels;
     const glyphMetadataPixels = createGlyphMetadataPixels(state.glyphs);
 
     if (state.glyphs.length > 0) {
@@ -2466,6 +2882,7 @@
     ui.glyphReadout.textContent = `${String(state.glyphs.length).padStart(2, "0")} GLYPHS`;
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
     ui.renderStatus.textContent = "BAKE READY";
+    syncGlyphTransformUi();
     render();
   }
 
@@ -2475,10 +2892,9 @@
   }
 
   function resizeCanvas() {
-    const rect = ui.canvas.getBoundingClientRect();
     const dpr = Math.min((window.devicePixelRatio || 1) * 1.5, 3);
-    const width = Math.max(1, Math.round(rect.width * dpr));
-    const height = Math.max(1, Math.round(rect.height * dpr));
+    const width = Math.max(1, Math.round(ui.canvas.clientWidth * dpr));
+    const height = Math.max(1, Math.round(ui.canvas.clientHeight * dpr));
     if (ui.canvas.width !== width || ui.canvas.height !== height) {
       ui.canvas.width = width;
       ui.canvas.height = height;
@@ -2518,6 +2934,7 @@
     }
     sceneTargetWidth = width;
     sceneTargetHeight = height;
+    syncOverlayBounds();
     return true;
   }
 
@@ -2584,7 +3001,10 @@
     gl.uniform1f(locations.materialMode, activePreset().mode);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    if (!bakeReady) return;
+    if (!bakeReady) {
+      syncGlyphTransformUi();
+      return;
+    }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
     const useDotPresent = activePreset().mode === 1 && !state.debugId;
@@ -2612,6 +3032,7 @@
       gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 6);
+    syncGlyphTransformUi();
   }
 
   let rebuildTimer = 0;
@@ -2773,6 +3194,97 @@
   ui.baseColorInput.addEventListener("input", (event) => {
     writePresetSetting("baseColor", event.currentTarget.value);
     render();
+  });
+  ui.canvas.addEventListener("pointerdown", (event) => {
+    const point = canvasClientToBakePoint(event.clientX, event.clientY, true);
+    const record = recordAtBakePoint(point);
+    if (!record) {
+      selectGlyph(null);
+      return;
+    }
+    selectGlyph(record.key);
+    beginGlyphGesture(event, "move", record);
+  });
+  ui.glyphRotateHandle.addEventListener("pointerdown", (event) => {
+    const record = selectedGlyphRecord();
+    if (record) beginGlyphGesture(event, "rotate", record);
+  });
+  ui.glyphScaleHandle.addEventListener("pointerdown", (event) => {
+    const record = selectedGlyphRecord();
+    if (record) beginGlyphGesture(event, "scale", record);
+  });
+  window.addEventListener("pointermove", updateGlyphGesture);
+  window.addEventListener("pointerup", finishGlyphGesture);
+  window.addEventListener("pointercancel", finishGlyphGesture);
+
+  function applySelectedGlyphInput() {
+    const record = selectedGlyphRecord();
+    if (!record) return;
+    writeGlyphTransform(record.key, {
+      x: Number(ui.glyphOffsetXInput.value),
+      y: Number(ui.glyphOffsetYInput.value),
+      rotation: Number(ui.glyphRotationInput.value),
+      scale: Number(ui.glyphScaleInput.value) / 100,
+    });
+    syncGlyphTransformUi();
+    scheduleRebuild();
+  }
+  [
+    ui.glyphOffsetXInput,
+    ui.glyphOffsetYInput,
+    ui.glyphRotationInput,
+    ui.glyphScaleInput,
+  ].forEach((input) => input.addEventListener("change", applySelectedGlyphInput));
+  ui.resetGlyphTransformButton.addEventListener("click", () => {
+    const record = selectedGlyphRecord();
+    if (!record) return;
+    state.glyphTransforms.delete(record.key);
+    syncGlyphTransformUi();
+    scheduleRebuild();
+    announceGlyphTransform(record);
+  });
+  ui.resetAllGlyphTransformsButton.addEventListener("click", () => {
+    state.glyphTransforms.clear();
+    syncGlyphTransformUi();
+    scheduleRebuild();
+    ui.materialAnnouncement.textContent = "已重置全部字符布局";
+  });
+  ui.canvas.addEventListener("keydown", (event) => {
+    if (event.key === "PageDown" || event.key === "PageUp" || event.key === "]" || event.key === "[") {
+      if (state.glyphs.length === 0) return;
+      const direction = event.key === "PageDown" || event.key === "]" ? 1 : -1;
+      const currentIndex = state.glyphs.findIndex((record) => record.key === state.selectedGlyphKey);
+      const nextIndex = currentIndex < 0
+        ? (direction > 0 ? 0 : state.glyphs.length - 1)
+        : (currentIndex + direction + state.glyphs.length) % state.glyphs.length;
+      selectGlyph(state.glyphs[nextIndex].key);
+      event.preventDefault();
+      return;
+    }
+    const record = selectedGlyphRecord();
+    if (!record) return;
+    const next = { ...glyphTransformForKey(record.key) };
+    const step = event.shiftKey ? 10 : 1;
+    let handled = true;
+    if (event.altKey && (event.key === "ArrowLeft" || event.key === "ArrowRight")) {
+      next.rotation += (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 15 : 1);
+    } else if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+      next.scale += (event.key === "ArrowUp" ? 1 : -1) * (event.shiftKey ? 0.1 : 0.01);
+    } else if (event.key === "ArrowLeft") next.x -= step;
+    else if (event.key === "ArrowRight") next.x += step;
+    else if (event.key === "ArrowUp") next.y -= step;
+    else if (event.key === "ArrowDown") next.y += step;
+    else if (event.key === "Escape") {
+      selectGlyph(null);
+      event.preventDefault();
+      return;
+    } else handled = false;
+    if (!handled) return;
+    writeGlyphTransform(record.key, next);
+    syncGlyphTransformUi();
+    scheduleRebuild();
+    announceGlyphTransform(record);
+    event.preventDefault();
   });
   ui.materialViewButton.addEventListener("click", () => setDebugView(false));
   ui.idViewButton.addEventListener("click", () => setDebugView(true));

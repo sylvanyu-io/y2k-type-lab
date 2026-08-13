@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Y2K Type Material Lab</title>
-    <link rel="stylesheet" href="./art-text.css?v=11" />
+    <link rel="stylesheet" href="./art-text.css?v=12" />
   </head>
   <body>
     <main class="app-shell">
@@ -23,7 +23,7 @@
         </div>
         <div class="top-actions">
           <a href="./index.html" class="ghost-action">MOTION LAB</a>
-          <button class="ghost-action" id="resetButton" type="button">RESET</button>
+          <button class="ghost-action" id="resetButton" type="button" aria-label="重置当前材质参数">RESET</button>
           <button class="export-action" type="button" disabled>PNG · NEXT</button>
         </div>
       </header>
@@ -97,7 +97,7 @@
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="clip-sdf" aria-hidden="true"></canvas><figcaption><b>CLIP SDF</b><span>RG PACKED · VIS</span></figcaption></figure>
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="shading-sdf" aria-hidden="true"></canvas><figcaption><b>SHADING SDF</b><span>BA PACKED · VIS</span></figcaption></figure>
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="normal" aria-hidden="true"></canvas><figcaption><b>NORMAL XY</b><span>RGBA PACKED · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b>SEMANTIC ID</b><span>G8 · DEBUG</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b>SEMANTIC ID</b><span>G8 ID · RB ROT</span></figcaption></figure>
             </div>
           </section>
         </aside>
@@ -113,12 +113,19 @@
           </div>
 
           <div class="artboard-frame">
-            <canvas id="artCanvas" aria-label="液态铬艺术字预览"></canvas>
+            <canvas id="artCanvas" tabindex="0" aria-label="艺术字预览，可点击字符并拖动编辑" aria-describedby="glyphTransformHelp"></canvas>
+            <svg id="glyphTransformOverlay" class="glyph-transform-overlay" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" hidden>
+              <polygon id="glyphSelectionBox" class="glyph-selection-box" points="" />
+              <line id="glyphRotateStem" class="glyph-rotate-stem" x1="0" y1="0" x2="0" y2="0" />
+              <circle id="glyphRotateHandle" class="glyph-transform-handle glyph-rotate-handle" cx="0" cy="0" r="12" data-glyph-handle="rotate" />
+              <circle id="glyphScaleHandle" class="glyph-transform-handle glyph-scale-handle" cx="0" cy="0" r="12" data-glyph-handle="scale" />
+            </svg>
             <div class="corner-mark top-left" aria-hidden="true"></div>
             <div class="corner-mark top-right" aria-hidden="true"></div>
             <div class="corner-mark bottom-left" aria-hidden="true"></div>
             <div class="corner-mark bottom-right" aria-hidden="true"></div>
             <div id="renderError" class="render-error" hidden></div>
+            <p id="glyphTransformHelp" class="sr-only">点击字符选中并拖动。洋红手柄旋转，青色手柄缩放。Page Up 和 Page Down 切换字符，方向键微调位置，Alt 加方向键调整旋转或缩放。</p>
           </div>
 
           <footer class="canvas-status">
@@ -149,6 +156,22 @@ CHROME</textarea>
               <span><b>LINE HEIGHT</b><output id="lineHeightValue">0.88×</output></span>
               <input id="lineHeightInput" type="range" min="0.76" max="1.08" value="0.88" step="0.01" />
             </label>
+            <section id="glyphTransformControls" class="glyph-transform-controls" aria-labelledby="glyphTransformTitle" hidden>
+              <div class="glyph-transform-title">
+                <span id="glyphTransformTitle">SELECTED CHARACTER</span>
+                <strong id="selectedGlyphLabel">—</strong>
+              </div>
+              <div class="glyph-transform-grid">
+                <label for="glyphOffsetXInput"><span>X</span><input id="glyphOffsetXInput" type="number" step="1" /><em>PX</em></label>
+                <label for="glyphOffsetYInput"><span>Y</span><input id="glyphOffsetYInput" type="number" step="1" /><em>PX</em></label>
+                <label for="glyphRotationInput"><span>ROTATE</span><input id="glyphRotationInput" type="number" min="-180" max="180" step="1" /><em>°</em></label>
+                <label for="glyphScaleInput"><span>SCALE</span><input id="glyphScaleInput" type="number" min="20" max="300" step="1" /><em>%</em></label>
+              </div>
+              <div class="glyph-transform-actions">
+                <button id="resetGlyphTransformButton" type="button">RESET CHARACTER</button>
+                <button id="resetAllGlyphTransformsButton" type="button" aria-label="重置全部字符布局">RESET ALL LAYOUT</button>
+              </div>
+            </section>
           </section>
 
           <section class="control-section">
@@ -266,6 +289,6 @@ CHROME</textarea>
 
     <script src="./art-text-presets.js?v=29"></script>
     <script src="./art-text-fields.js?v=13"></script>
-    <script src="./art-text.js?v=113"></script>
+    <script src="./art-text.js?v=114"></script>
   </body>
 </html>

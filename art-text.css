@@ -39,7 +39,7 @@ body {
 
 button, input, textarea { font: inherit; }
 button, input[type="range"], input[type="color"] { cursor: pointer; }
-button:focus-visible, input:focus-visible, textarea:focus-visible {
+button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
   outline: 1px solid var(--cyan);
   outline-offset: 2px;
 }
@@ -229,7 +229,25 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   border-radius: 10px;
   background: #d8b9fa;
   box-shadow: 0 24px 80px rgba(0,0,0,0.62), 0 0 60px rgba(183,166,255,0.08);
+  cursor: default;
+  touch-action: none;
 }
+.glyph-transform-overlay {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+.glyph-transform-overlay[hidden] { display: none; }
+.glyph-selection-box { fill: rgba(57,245,255,0.045); stroke: var(--cyan); stroke-width: 2; stroke-dasharray: 10 7; vector-effect: non-scaling-stroke; }
+.glyph-rotate-stem { stroke: var(--cyan); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.glyph-transform-handle { pointer-events: auto; touch-action: none; stroke: #09080c; stroke-width: 4; vector-effect: non-scaling-stroke; }
+.glyph-rotate-handle { fill: var(--magenta); cursor: grab; }
+.glyph-scale-handle { fill: var(--cyan); cursor: nwse-resize; }
+.glyph-transform-handle:active { cursor: grabbing; }
 .corner-mark { position: absolute; width: 14px; height: 14px; border-color: var(--cyan); opacity: 0.46; }
 .top-left { top: 14px; left: 14px; border-top: 1px solid; border-left: 1px solid; }
 .top-right { top: 14px; right: 14px; border-top: 1px solid; border-right: 1px solid; }
@@ -268,6 +286,18 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .range-control > span { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 650 12.5px/1.25 var(--mono); }
 .range-control b { color: var(--text); font-weight: 650; }
 .range-control output { color: var(--cyan); }
+.glyph-transform-controls { margin-top: 16px; padding: 12px; border: 1px solid rgba(57,245,255,0.34); background: rgba(57,245,255,0.035); }
+.glyph-transform-controls[hidden] { display: none; }
+.glyph-transform-title { display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 700 10px/1 var(--mono); letter-spacing: 0.06em; }
+.glyph-transform-title strong { color: var(--cyan); font-size: 18px; }
+.glyph-transform-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; margin-top: 11px; }
+.glyph-transform-grid label { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 34px; padding: 0 7px; border: 1px solid var(--line); color: var(--muted); font: 700 9px/1 var(--mono); }
+.glyph-transform-grid input { min-width: 0; width: 100%; border: 0; color: var(--text); background: transparent; font: 700 11px/1 var(--mono); text-align: right; }
+.glyph-transform-grid input:focus { color: var(--cyan); }
+.glyph-transform-grid em { color: var(--magenta); font-style: normal; }
+.glyph-transform-actions { display: grid; grid-template-columns: 1fr auto; gap: 7px; margin-top: 9px; }
+.glyph-transform-actions button { min-height: 32px; border: 1px solid var(--line-hot); color: var(--muted); background: #0a090d; font: 700 9px/1 var(--mono); letter-spacing: 0.04em; }
+.glyph-transform-actions button:hover { border-color: var(--cyan); color: var(--cyan); }
 .select-control > span { display: block; margin-bottom: 8px; color: var(--muted); font: 700 12px/1 var(--mono); }
 .select-control select {
   width: 100%;
