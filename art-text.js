@@ -388,10 +388,15 @@
 
     vec2 colorFieldUv(vec3 direction) {
       direction = normalize(direction);
-      return vec2(
-        0.50 + direction.x * 0.48,
-        0.50 + direction.y * 0.48
-      );
+      // Project the full reflected sphere without letting the lookup turn back
+      // near a rounded rim. Preserve the broader legacy face traversal until
+      // that fold becomes possible, then blend into a monotonic half-angle map.
+      float planarLength = length(direction.xy);
+      vec2 orientation = direction.xy / max(planarLength, 0.0001);
+      float halfAngleRadius = sqrt(max(0.0, (1.0 - direction.z) * 0.5));
+      float rimBlend = smoothstep(0.84, 0.97, planarLength);
+      float projectedRadius = mix(planarLength, halfAngleRadius, rimBlend);
+      return vec2(0.50) + orientation * projectedRadius * 0.48;
     }
 
     float softBox(vec2 point, vec2 center, vec2 halfSize, float feather) {
