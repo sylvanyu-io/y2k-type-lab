@@ -255,10 +255,8 @@
     return pixels;
   }
 
-  function boxBlurZero(source, width, height, radius) {
+  function boxBlurZero(source, width, height, radius, horizontal, output) {
     const span = radius * 2 + 1;
-    const horizontal = new Float32Array(source.length);
-    const output = new Float32Array(source.length);
 
     for (let y = 0; y < height; y += 1) {
       const row = y * width;
@@ -287,110 +285,81 @@
     return output;
   }
 
-  function createGlyphBodyHeight(alphaPixels, width, height, glyphs, sigma) {
-    const output = new Float32Array(width * height);
+  function createArtworkBodyHeight(alphaPixels, width, height, sigma) {
+    const pixelCount = width * height;
+    let field = new Float32Array(pixelCount);
+    let scratchA = new Float32Array(pixelCount);
+    let scratchB = new Float32Array(pixelCount);
     const passes = 3;
     const idealWidth = Math.sqrt((12 * sigma * sigma) / passes + 1);
     const radius = Math.max(1, Math.round((idealWidth - 1) * 0.5));
 
-    glyphs.forEach((glyph) => {
-      const left = Math.max(0, glyph.cellLeft);
-      const top = Math.max(0, glyph.cellTop);
-      const right = Math.min(width, glyph.cellRight);
-      const bottom = Math.min(height, glyph.cellBottom);
-      const localWidth = right - left;
-      const localHeight = bottom - top;
-      let field = new Float32Array(localWidth * localHeight);
+    // One artwork-wide coverage field makes close or overlapping glyphs one
+    // continuous baked surface. No per-glyph owner rectangle participates.
+    for (let index = 0; index < pixelCount; index += 1) {
+      field[index] = alphaPixels[index * 4 + 3] / 255;
+    }
+    for (let pass = 0; pass < passes; pass += 1) {
+      boxBlurZero(field, width, height, radius, scratchA, scratchB);
+      const previous = field;
+      field = scratchB;
+      scratchB = previous;
+    }
 
-      // A blurred coverage field bends the face only near its silhouettes.
-      // Unlike positive distance, it contains no medial-axis topology, so
-      // branched glyphs such as M cannot expose a centre-line seam.
-      for (let y = top; y < bottom; y += 1) {
-        const localRow = (y - top) * localWidth;
-        const globalRow = y * width;
-        for (let x = left; x < right; x += 1) {
-          const sourceIndex = globalRow + x;
-          field[localRow + x - left] = alphaPixels[sourceIndex * 4 + 3] / 255;
-        }
-      }
-
-      for (let pass = 0; pass < passes; pass += 1) {
-        field = boxBlurZero(field, localWidth, localHeight, radius);
-      }
-
-      for (let y = top; y < bottom; y += 1) {
-        const localRow = (y - top) * localWidth;
-        const globalRow = y * width;
-        for (let x = left; x < right; x += 1) {
-          const sourceIndex = globalRow + x;
-          const blurred = Math.max(0, Math.min(1, field[localRow + x - left]));
-          output[sourceIndex] = 1 - Math.pow(1 - blurred, 1.15);
-        }
-      }
-    });
+    const output = new Float32Array(pixelCount);
+    for (let index = 0; index < pixelCount; index += 1) {
+      const blurred = Math.max(0, Math.min(1, field[index]));
+      output[index] = 1 - Math.pow(1 - blurred, 1.15);
+    }
     return output;
   }
 
-  function createGlyphShadingDistance(signedField, width, height, glyphs, spread = 24) {
-    const output = new Float32Array(width * height);
-    output.fill(-spread);
+  function createArtworkShadingDistance(signedField, width, height, spread = 24) {
+    const pixelCount = width * height;
+    const field = new Float32Array(pixelCount);
+    const horizontal = new Float32Array(pixelCount);
+    const output = new Float32Array(pixelCount);
     const kernel = [
       1 / 256, 8 / 256, 28 / 256, 56 / 256, 70 / 256,
       56 / 256, 28 / 256, 8 / 256, 1 / 256,
     ];
     const radius = 4;
 
-    glyphs.forEach((glyph) => {
-      const left = Math.max(0, Math.floor(glyph.cellLeft));
-      const top = Math.max(0, Math.floor(glyph.cellTop));
-      const right = Math.min(width, Math.ceil(glyph.cellRight));
-      const bottom = Math.min(height, Math.ceil(glyph.cellBottom));
-      const localWidth = right - left;
-      const localHeight = bottom - top;
-      const field = new Float32Array(localWidth * localHeight);
-      const horizontal = new Float32Array(field.length);
-
-      for (let y = 0; y < localHeight; y += 1) {
-        for (let x = 0; x < localWidth; x += 1) {
-          const distance = signedField[(y + top) * width + x + left];
-          field[y * localWidth + x] = Math.max(-spread, Math.min(spread, distance));
+    for (let index = 0; index < pixelCount; index += 1) {
+      field[index] = Math.max(-spread, Math.min(spread, signedField[index]));
+    }
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        let value = 0;
+        for (let offset = -radius; offset <= radius; offset += 1) {
+          const sampleX = x + offset;
+          const sample = sampleX < 0 || sampleX >= width
+            ? -spread
+            : field[y * width + sampleX];
+          value += sample * kernel[offset + radius];
         }
+        horizontal[y * width + x] = value;
       }
-
-      for (let y = 0; y < localHeight; y += 1) {
-        for (let x = 0; x < localWidth; x += 1) {
-          let value = 0;
-          for (let offset = -radius; offset <= radius; offset += 1) {
-            const sampleX = x + offset;
-            const sample = sampleX < 0 || sampleX >= localWidth
-              ? -spread
-              : field[y * localWidth + sampleX];
-            value += sample * kernel[offset + radius];
-          }
-          horizontal[y * localWidth + x] = value;
+    }
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
+        let value = 0;
+        for (let offset = -radius; offset <= radius; offset += 1) {
+          const sampleY = y + offset;
+          const sample = sampleY < 0 || sampleY >= height
+            ? -spread
+            : horizontal[sampleY * width + x];
+          value += sample * kernel[offset + radius];
         }
+        output[y * width + x] = value;
       }
-
-      for (let y = 0; y < localHeight; y += 1) {
-        for (let x = 0; x < localWidth; x += 1) {
-          let value = 0;
-          for (let offset = -radius; offset <= radius; offset += 1) {
-            const sampleY = y + offset;
-            const sample = sampleY < 0 || sampleY >= localHeight
-              ? -spread
-              : horizontal[sampleY * localWidth + x];
-            value += sample * kernel[offset + radius];
-          }
-          output[(y + top) * width + x + left] = value;
-        }
-      }
-    });
+    }
     return output;
   }
 
   window.ArtTextFields = Object.freeze({
-    createGlyphBodyHeight,
-    createGlyphShadingDistance,
+    createArtworkBodyHeight,
+    createArtworkShadingDistance,
     createNoiseField,
     createReflectionColorField,
   });

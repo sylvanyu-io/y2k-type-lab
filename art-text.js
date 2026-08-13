@@ -10,8 +10,8 @@
   const DISPLAY_FONT = '"Arial Rounded MT Bold", "Yuanti SC", "Hiragino Maru Gothic ProN", "Avenir Next", "PingFang SC", sans-serif';
   const DEBUG_SURFACE = new URLSearchParams(window.location.search).get("debug") || "";
   const {
-    createGlyphBodyHeight,
-    createGlyphShadingDistance,
+    createArtworkBodyHeight,
+    createArtworkShadingDistance,
     createNoiseField,
   } = window.ArtTextFields;
   const {
@@ -31,11 +31,8 @@
     rose: "./assets/reflection-fields/rose-citadel.webp?v=2",
     arctic: "./assets/reflection-fields/ice-citadel.webp?v=3",
     sunset: "./assets/reflection-fields/solar-obsidian.webp?v=3",
-    prism: "./assets/reflection-fields/prism-spectrum.webp?v=3",
-    neon: "./assets/reflection-fields/neon-monsoon.webp?v=1",
-  });
-  const REFLECTION_TEXTURE_ASPECTS = Object.freeze({
-    neon: 2,
+    prism: "./assets/reflection-fields/prism-spectrum.webp?v=6",
+    neon: "./assets/reflection-fields/neon-monsoon.webp?v=2",
   });
   const PRESET_SETTING_KEYS = Object.freeze([...new Set(
     PRESET_ORDER.flatMap((key) => Object.keys(PRESETS[key].settings)),
@@ -101,6 +98,8 @@
     liquidWarpValue: document.querySelector("#liquidWarpValue"),
     dotPitchInput: document.querySelector("#dotPitchInput"),
     dotPitchValue: document.querySelector("#dotPitchValue"),
+    perspectiveAngleInput: document.querySelector("#perspectiveAngleInput"),
+    perspectiveAngleValue: document.querySelector("#perspectiveAngleValue"),
     glitchStrengthInput: document.querySelector("#glitchStrengthInput"),
     glitchStrengthValue: document.querySelector("#glitchStrengthValue"),
     vhsScanlineSpacingInput: document.querySelector("#vhsScanlineSpacingInput"),
@@ -117,7 +116,12 @@
     pinkInput: document.querySelector("#pinkInput"),
   };
 
-  const state = { ...DEFAULTS, debugId: false, glyphs: [] };
+  const state = {
+    ...DEFAULTS,
+    debugId: false,
+    glyphs: [],
+    artworkBounds: [0.5, 0.5, 0.90, 0.78],
+  };
 
   function activePreset() {
     return PRESETS[state.activePreset] || PRESETS[DEFAULT_PRESET_KEY];
@@ -171,7 +175,7 @@
   const idCanvas = document.createElement("canvas");
   idCanvas.width = TEXTURE_WIDTH;
   idCanvas.height = TEXTURE_HEIGHT;
-  const idContext = idCanvas.getContext("2d", { alpha: true });
+  const idContext = idCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
 
   const gl = ui.canvas.getContext("webgl2", {
     alpha: false,
@@ -206,7 +210,7 @@
     uniform sampler2D uShapeTexture;
     uniform sampler2D uDistanceTexture;
     uniform sampler2D uIdTexture;
-    uniform sampler2D uBoundsTexture;
+    uniform sampler2D uGlyphMetadataTexture;
     uniform sampler2D uNoiseTexture;
     uniform sampler2D uColorFieldTexture;
     uniform sampler2D uNormalTexture;
@@ -223,6 +227,8 @@
     uniform float uLiquidWarp;
     uniform float uDotPitch;
     uniform float uGlitchStrength;
+    uniform float uPerspectiveAngle;
+    uniform vec4 uArtworkBounds;
     uniform float uExtrusion;
     uniform float uGlow;
     uniform float uSceneDetail;
@@ -231,9 +237,22 @@
     uniform float uDebugId;
     uniform float uMaterialMode;
 
-    float unpack16(vec2 bytes) {
+    float unpackMetadata16(vec2 bytes) {
       vec2 integerBytes = floor(bytes * 255.0 + 0.5);
       return (integerBytes.x * 256.0 + integerBytes.y) / 65535.0;
+    }
+
+    vec4 glyphMetadataForId(float id) {
+      float idByte = floor(id * 255.0 + 0.5);
+      float lookupX = (idByte + 0.5) / 256.0;
+      vec4 centerBytes = texture(uGlyphMetadataTexture, vec2(lookupX, 0.25));
+      vec4 sizeBytes = texture(uGlyphMetadataTexture, vec2(lookupX, 0.75));
+      return vec4(
+        unpackMetadata16(centerBytes.rg),
+        unpackMetadata16(centerBytes.ba),
+        unpackMetadata16(sizeBytes.rg),
+        unpackMetadata16(sizeBytes.ba)
+      );
     }
 
     vec2 distanceTap(vec2 uv) {
@@ -311,67 +330,21 @@
       return sampleShapeData16(uv).y;
     }
 
-    vec4 boundsForId(float id) {
-      float idByte = floor(id * 255.0 + 0.5);
-      float x = (idByte + 0.5) / 256.0;
-      vec4 centerBytes = texture(uBoundsTexture, vec2(x, 0.25));
-      vec4 sizeSeed = texture(uBoundsTexture, vec2(x, 0.75));
-      return vec4(
-        unpack16(centerBytes.rg),
-        unpack16(centerBytes.ba),
-        sizeSeed.r,
-        sizeSeed.g
-      );
-    }
-
-    float signedDistance(vec2 uv) {
-      float encoded = sampleDistancePair16(uv).x;
-      return (encoded * 2.0 - 1.0) * uSpread;
-    }
-
     float insideTexture(vec2 uv) {
       vec2 minimum = step(vec2(0.0), uv);
       vec2 maximum = step(uv, vec2(1.0));
       return minimum.x * minimum.y * maximum.x * maximum.y;
     }
 
-    float sameGlyphAt(vec2 uv, float expectedId) {
-      float sampledId = texture(uIdTexture, uv).r;
-      float sameId = 1.0 - step(0.5 / 255.0, abs(sampledId - expectedId));
-      return insideTexture(uv) * sameId;
-    }
-
-    float gatedRawDistanceTap(vec2 uv, float expectedId) {
-      float encoded = distanceTap(uv).x;
+    float mergedRawDistancePx(vec2 uv) {
+      float encoded = sampleDistancePair16(clamp(uv, vec2(0.0), vec2(1.0))).x;
       float distancePx = (encoded * 2.0 - 1.0) * uSpread;
-      return mix(-uSpread, distancePx, sameGlyphAt(uv, expectedId));
+      return mix(-uSpread, distancePx, insideTexture(uv));
     }
 
-    float safeRawDistancePx(vec2 uv, float expectedId) {
-      vec2 pixel = uv * uTextureSize - 0.5;
-      vec2 base = floor(pixel);
-      vec2 fraction = fract(pixel);
-      vec2 uv00 = (base + vec2(0.5, 0.5)) / uTextureSize;
-      vec2 uv10 = (base + vec2(1.5, 0.5)) / uTextureSize;
-      vec2 uv01 = (base + vec2(0.5, 1.5)) / uTextureSize;
-      vec2 uv11 = (base + vec2(1.5, 1.5)) / uTextureSize;
-      return mix(
-        mix(
-          gatedRawDistanceTap(uv00, expectedId),
-          gatedRawDistanceTap(uv10, expectedId),
-          fraction.x
-        ),
-        mix(
-          gatedRawDistanceTap(uv01, expectedId),
-          gatedRawDistanceTap(uv11, expectedId),
-          fraction.x
-        ),
-        fraction.y
-      );
-    }
-
-    float safeFillAt(vec2 uv, float expectedId, float aa) {
-      float distancePx = safeRawDistancePx(uv, expectedId) + ${BODY_INFLATE.toFixed(1)};
+    float mergedFillAt(vec2 uv) {
+      float distancePx = mergedRawDistancePx(uv) + ${BODY_INFLATE.toFixed(1)};
+      float aa = max(1.65, fwidth(distancePx) * 1.35);
       return smoothstep(-aa, aa, distancePx);
     }
 
@@ -544,76 +517,132 @@
       return color * mix(0.88, 1.04, vignette);
     }
 
-    vec4 dotGlitchMaterial(
-      vec2 uv,
-      float id,
-      vec2 localPx,
-      float aa
-    ) {
-      float idByte = floor(id * 255.0 + 0.5);
+    vec2 dotPerspectiveSourceUv(vec2 destinationUv, float depthAmount) {
+      vec2 artworkSizePx = max(uArtworkBounds.zw * uTextureSize, vec2(1.0));
+      vec2 destinationPx = (destinationUv - uArtworkBounds.xy) * uTextureSize;
+      float destinationY = destinationPx.y / artworkSizePx.y + 0.5;
+
+      // The angle is a real camera-tilt control: zero is front-on, increasing
+      // it pulls the top edge toward the vanishing line while the bottom stays
+      // at full scale. The inverse form keeps the source texture undistorted.
+      float tilt = clamp(uPerspectiveAngle / 75.0, 0.0, 1.0);
+      float topScale = mix(1.0, 0.48, sin(tilt * 1.30899694));
+      float clampedY = clamp(destinationY, 0.0, 1.0);
+      float curveA = 0.5 * (1.0 - topScale);
+      float curveArea = topScale + curveA;
+      float curveTarget = clampedY * curveArea;
+      float sourceY = (2.0 * curveTarget) / max(
+        topScale + sqrt(topScale * topScale + 4.0 * curveA * curveTarget),
+        0.0001
+      );
+      float edgeScale = mix(topScale, 1.0, step(0.0, destinationY - 1.0));
+      sourceY += (destinationY - clampedY) / max(edgeScale, 0.01);
+
+      float perspectiveScale = mix(topScale, 1.0, clamp(sourceY, 0.0, 1.0));
+      float depthFlare = 1.0
+        + depthAmount * mix(0.012, 0.038, uGlitchStrength) * tilt * clampedY;
+      destinationPx.x /= max(0.46, perspectiveScale * depthFlare);
+      destinationPx.y = (sourceY - 0.5) * artworkSizePx.y;
+      return uArtworkBounds.xy + destinationPx / uTextureSize;
+    }
+
+    vec4 dotGlitchMaterial(vec2 uv) {
       float strength = uGlitchStrength;
       float pitch = max(5.0, uDotPitch);
+      vec2 artworkSizePx = max(uArtworkBounds.zw * uTextureSize, vec2(1.0));
+      vec2 artworkLocalPx = (uv - uArtworkBounds.xy) * uTextureSize;
+      float perspectiveRow = clamp(
+        artworkLocalPx.y / artworkSizePx.y + 0.5,
+        0.0,
+        1.0
+      );
 
-      // Sparse, taller slices read as intentional signal tears instead of a
-      // fine per-row wobble. The glyph id keeps every split deterministic.
+      // Tearing is seeded in full-artboard space. Every glyph now belongs to
+      // one baked signal field, so no per-glyph cell can leave a vertical cut.
       float sliceHeight = mix(26.0, 12.0, strength);
-      float sliceRow = floor((localPx.y + 4096.0) / sliceHeight);
-      float sliceNoise = hash21(vec2(idByte * 1.17, sliceRow));
+      float sliceRow = floor((artworkLocalPx.y + 4096.0) / sliceHeight);
+      float sliceNoise = hash21(vec2(sliceRow * 1.17, 19.0));
       float tearGate = step(mix(0.992, 0.82, strength), sliceNoise);
-      float tearDirection = hash21(vec2(sliceRow, idByte * 2.31)) * 2.0 - 1.0;
+      float tearDirection = hash21(vec2(sliceRow * 2.31, 47.0)) * 2.0 - 1.0;
       float tearPx = tearDirection * mix(5.0, 32.0, strength) * tearGate;
 
-      // Most dropped rows only remove the cyan face, revealing the persistent
-      // magenta underprint. A few hard drops expose the background entirely.
       float lineHeight = max(2.2, pitch * 0.38);
-      float lineRow = floor((localPx.y + 2048.0) / lineHeight);
-      float lineNoise = hash21(vec2(idByte * 4.13, lineRow));
+      float lineRow = floor((artworkLocalPx.y + 2048.0) / lineHeight);
+      float lineNoise = hash21(vec2(lineRow * 4.13, 71.0));
       float frontDrop = step(mix(0.998, 0.925, strength), lineNoise);
       float hardDrop = step(
         mix(0.9995, 0.978, strength),
-        hash21(vec2(idByte * 7.91, lineRow + 31.0))
+        hash21(vec2(lineRow * 7.91, 103.0))
       );
 
-      vec2 sourceUv = uv - vec2(tearPx / uTextureSize.x, 0.0);
-      float tornFill = safeFillAt(sourceUv, id, aa);
+      vec2 sourceUv = dotPerspectiveSourceUv(
+        uv - vec2(tearPx / uTextureSize.x, 0.0),
+        0.0
+      );
+      float tornFill = mergedFillAt(sourceUv);
 
-      vec2 dotCell = fract((localPx - vec2(tearPx, 0.0)) / pitch) - 0.5;
-      float dots = 1.0 - smoothstep(0.31, 0.45, length(dotCell));
+      vec2 perspectiveLocalPx = (sourceUv - uArtworkBounds.xy) * uTextureSize;
+      vec2 dotCell = fract(perspectiveLocalPx / pitch) - 0.5;
+      float dotRadius = mix(0.27, 0.36, perspectiveRow);
+      float dots = 1.0 - smoothstep(dotRadius, dotRadius + 0.12, length(dotCell));
       float core = tornFill * dots * (1.0 - frontDrop) * (1.0 - hardDrop);
 
-      float cyanMisregister = safeFillAt(
-        uv - vec2(mix(2.0, 5.5, strength), -1.0) / uTextureSize,
-        id,
-        aa
+      float cyanMisregister = mergedFillAt(
+        dotPerspectiveSourceUv(
+          uv - vec2(mix(2.0, 5.5, strength), -1.0) / uTextureSize,
+          0.0
+        )
       ) * dots * (1.0 - hardDrop);
 
-      float pinkTear = safeFillAt(
-        uv - vec2((tearPx + mix(6.0, 11.0, strength)) / uTextureSize.x, 0.0),
-        id,
-        aa
+      float pinkTear = mergedFillAt(
+        dotPerspectiveSourceUv(
+          uv - vec2((tearPx + mix(6.0, 11.0, strength)) / uTextureSize.x, 0.0),
+          0.0
+        )
       ) * dots * tearGate * (1.0 - hardDrop);
 
-      vec2 underprintOffset = vec2(-0.62, -1.0) * max(10.0, uExtrusion);
-      float underprintFill = safeFillAt(
-        uv + underprintOffset / uTextureSize,
-        id,
-        aa
-      ) * (1.0 - hardDrop);
-      float underprint = underprintFill * mix(0.66, 1.0, dots);
+      // Six full-frame plates form one continuous baked volume. They may pass
+      // freely through the old glyph-cell boundaries but still stop at the
+      // actual 1600×900 artboard edge.
+      vec2 depthVectorPx = vec2(mix(0.08, 0.16, strength), 1.0) * uExtrusion;
+      float depthEnabled = smoothstep(0.0, 1.0, uExtrusion);
+      float depthRidge = pow(
+        0.5 + 0.5 * cos(
+          6.2831853 * (uv.y * uTextureSize.y / max(6.0, pitch * 0.78) + 0.071)
+        ),
+        3.0
+      );
+      float depthGroove = 1.0 - smoothstep(0.38, 0.62, depthRidge);
+      float alpha = 0.0;
+      vec3 premultiplied = vec3(0.0);
+      for (int layer = 6; layer >= 1; layer -= 1) {
+        float depthAmount = float(layer) / 6.0;
+        float layerTearPx = tearPx * mix(0.76, 1.0, 1.0 - depthAmount);
+        vec2 layerDestinationUv = uv
+          - (depthVectorPx * depthAmount + vec2(layerTearPx, 0.0)) / uTextureSize;
+        vec2 layerSourceUv = dotPerspectiveSourceUv(
+          layerDestinationUv,
+          depthAmount
+        );
+        float layerFill = mergedFillAt(layerSourceUv) * (1.0 - hardDrop);
+        float layerPulse = mod(float(layer), 2.0);
+        vec3 deepBlue = vec3(0.018, 0.045, 0.28) + uCyan * 0.045;
+        float colorDepth = smoothstep(0.10, 1.0, depthAmount);
+        vec3 violet = mix(deepBlue, uPink, 0.48);
+        vec3 layerColor = mix(deepBlue, violet, smoothstep(0.0, 0.52, colorDepth));
+        layerColor = mix(layerColor, uPink, smoothstep(0.52, 1.0, colorDepth));
+        layerColor = mix(layerColor, uPink, depthRidge * (0.16 + layerPulse * 0.12));
+        layerColor *= mix(0.54, 1.08, depthRidge);
+        layerColor += deepBlue * depthGroove * 0.16;
+        float layerAlpha = layerFill
+          * depthEnabled
+          * mix(0.78, 0.96, depthRidge)
+          * mix(0.92, 1.0, layerPulse);
+        premultiplied = layerColor * layerAlpha
+          + premultiplied * (1.0 - layerAlpha);
+        alpha = layerAlpha + alpha * (1.0 - layerAlpha);
+      }
 
-      // A second, deeper ID-gated plate makes the magenta offset read as an
-      // extrusion rather than a soft glow. It can only occupy this glyph's
-      // padded cell because every displaced tap is checked by safeFillAt.
-      float deepUnderprintFill = safeFillAt(
-        uv + underprintOffset * 1.58 / uTextureSize,
-        id,
-        aa
-      ) * (1.0 - hardDrop);
-      float deepUnderprint = deepUnderprintFill * mix(0.52, 0.84, dots);
-
-      // Independent sparse carrier rows create long signal trails. Four
-      // ID-safe taps bridge a displaced slice into a broken horizontal streak
-      // while padding prevents it from ever borrowing a neighbouring glyph.
       float carrierHeight = mix(4.2, 2.6, strength);
       float carrierRow = floor((uv.y * uTextureSize.y + 8192.0) / carrierHeight);
       float carrierSeed = hash21(vec2(carrierRow * 0.731, 17.0));
@@ -625,26 +654,22 @@
       float carrierLength = carrierDirection
         * mix(18.0, 68.0, strength)
         * mix(0.72, 1.0, hash21(vec2(carrierRow + 9.0, 31.0)));
-      float carrierA = safeFillAt(
+      float carrierA = mergedFillAt(dotPerspectiveSourceUv(
         uv - vec2(carrierLength * 0.25 / uTextureSize.x, 0.0),
-        id,
-        aa
-      );
-      float carrierB = safeFillAt(
+        0.0
+      ));
+      float carrierB = mergedFillAt(dotPerspectiveSourceUv(
         uv - vec2(carrierLength * 0.50 / uTextureSize.x, 0.0),
-        id,
-        aa
-      );
-      float carrierC = safeFillAt(
+        0.0
+      ));
+      float carrierC = mergedFillAt(dotPerspectiveSourceUv(
         uv - vec2(carrierLength * 0.75 / uTextureSize.x, 0.0),
-        id,
-        aa
-      );
-      float carrierD = safeFillAt(
+        0.0
+      ));
+      float carrierD = mergedFillAt(dotPerspectiveSourceUv(
         uv - vec2(carrierLength / uTextureSize.x, 0.0),
-        id,
-        aa
-      );
+        0.0
+      ));
       float carrierFill = max(max(carrierA, carrierB), max(carrierC, carrierD));
       float carrierDash = mix(
         0.38,
@@ -654,23 +679,12 @@
       float signalTrail = carrierFill * carrierGate * carrierDash * (1.0 - hardDrop);
       float signalHead = carrierD * carrierGate * (1.0 - hardDrop);
 
-      float microCell = hash21(vec2(
-        idByte + floor(localPx.x / pitch),
-        floor(localPx.y / pitch)
-      ));
-      vec3 coreColor = mix(uCyan, vec3(0.94, 1.0, 1.0), step(0.91, microCell) * 0.28);
-
-      float alpha = deepUnderprint * 0.52;
-      vec3 premultiplied = mix(vec3(0.28, 0.0, 0.52), uPink, 0.72) * alpha;
-      float underprintAlpha = underprint * 0.88;
-      premultiplied = uPink * underprintAlpha + premultiplied * (1.0 - underprintAlpha);
-      alpha = underprintAlpha + alpha * (1.0 - underprintAlpha);
-      float cyanAlpha = cyanMisregister * 0.24;
-      premultiplied = uCyan * cyanAlpha + premultiplied * (1.0 - cyanAlpha);
-      alpha = cyanAlpha + alpha * (1.0 - cyanAlpha);
-      float tearAlpha = pinkTear * 0.66;
-      premultiplied = uPink * tearAlpha + premultiplied * (1.0 - tearAlpha);
-      alpha = tearAlpha + alpha * (1.0 - tearAlpha);
+      float microCell = hash21(floor(perspectiveLocalPx / pitch));
+      vec3 coreColor = mix(
+        uCyan,
+        vec3(0.94, 1.0, 1.0),
+        step(0.91, microCell) * 0.28
+      );
 
       float pinkTrailAlpha = signalTrail * mix(0.18, 0.48, strength);
       premultiplied = uPink * pinkTrailAlpha + premultiplied * (1.0 - pinkTrailAlpha);
@@ -679,12 +693,33 @@
       premultiplied = uCyan * cyanTrailAlpha + premultiplied * (1.0 - cyanTrailAlpha);
       alpha = cyanTrailAlpha + alpha * (1.0 - cyanTrailAlpha);
 
+      float tearAlpha = pinkTear * 0.72;
+      premultiplied = uPink * tearAlpha + premultiplied * (1.0 - tearAlpha);
+      alpha = tearAlpha + alpha * (1.0 - tearAlpha);
+
+      float facePlate = tornFill * (1.0 - frontDrop) * (1.0 - hardDrop);
+      float facePlateAlpha = facePlate * 0.84;
+      vec3 facePlateColor = mix(
+        vec3(0.004, 0.022, 0.085),
+        uCyan * vec3(0.08, 0.19, 0.24),
+        perspectiveRow
+      );
+      premultiplied = facePlateColor * facePlateAlpha
+        + premultiplied * (1.0 - facePlateAlpha);
+      alpha = facePlateAlpha + alpha * (1.0 - facePlateAlpha);
+
+      float cyanAlpha = cyanMisregister * 0.28;
+      premultiplied = uCyan * cyanAlpha + premultiplied * (1.0 - cyanAlpha);
+      alpha = cyanAlpha + alpha * (1.0 - cyanAlpha);
+
       premultiplied = coreColor * core + premultiplied * (1.0 - core);
       alpha = core + alpha * (1.0 - core);
 
-      float slicePhase = fract((localPx.y + 4096.0) / sliceHeight);
+      float slicePhase = fract((artworkLocalPx.y + 4096.0) / sliceHeight);
       float distanceToSliceEdge = min(slicePhase, 1.0 - slicePhase) * sliceHeight;
-      float tearEdge = (1.0 - smoothstep(0.35, 1.35, distanceToSliceEdge)) * tearGate * tornFill;
+      float tearEdge = (1.0 - smoothstep(0.35, 1.35, distanceToSliceEdge))
+        * tearGate
+        * tornFill;
       float edgeAlpha = clamp(tearEdge * 0.42, 0.0, 1.0);
       vec3 edgeColor = mix(uPink, uCyan, 0.34);
       premultiplied = edgeColor * edgeAlpha + premultiplied * (1.0 - edgeAlpha);
@@ -694,28 +729,22 @@
 
     vec4 vhsChromeMaterial(
       vec2 uv,
-      float id,
-      vec2 localPx,
+      vec2 signalLocalPx,
+      float signalSeed,
       float surfaceD,
       float fill,
       float aa,
       vec3 chrome
     ) {
-      float idByte = floor(id * 255.0 + 0.5);
-      float glyphSeed = fract(idByte * 0.6180339);
-      float line = floor((localPx.y + 2048.0) / 3.0);
-      float lineNoise = hash21(vec2(idByte * 1.37, line));
+      float line = floor((signalLocalPx.y + 2048.0) / 3.0);
+      float lineNoise = hash21(vec2(line * 1.37, 37.0));
       float dropout = step(0.93, lineNoise);
       float offsetPx = (lineNoise * 2.0 - 1.0) * mix(1.4, 4.2, dropout);
-      float redGhost = safeFillAt(
-        uv + vec2(offsetPx / uTextureSize.x, 0.0),
-        id,
-        aa
+      float redGhost = mergedFillAt(
+        uv + vec2(offsetPx / uTextureSize.x, 0.0)
       );
-      float cyanGhost = safeFillAt(
-        uv - vec2(offsetPx / uTextureSize.x, 0.0),
-        id,
-        aa
+      float cyanGhost = mergedFillAt(
+        uv - vec2(offsetPx / uTextureSize.x, 0.0)
       );
 
       float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
@@ -723,21 +752,19 @@
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
       posterChrome *= mix(1.0, 0.66, dropout);
-      posterChrome += uCyan * band(localPx.y / 170.0 + glyphSeed, 0.32, 0.16) * 0.14;
-      posterChrome += uPink * band(localPx.y / 180.0 - glyphSeed, -0.18, 0.18) * 0.16;
+      posterChrome += uCyan * band(signalLocalPx.y / 170.0 + signalSeed, 0.32, 0.16) * 0.14;
+      posterChrome += uPink * band(signalLocalPx.y / 180.0 - signalSeed, -0.18, 0.18) * 0.16;
 
       vec3 premultiplied = posterChrome * fill;
       premultiplied += vec3(1.0, 0.08, 0.48) * redGhost * dropout * 0.34;
       premultiplied += vec3(0.04, 0.92, 1.0) * cyanGhost * dropout * 0.38;
-      premultiplied += mix(uPink, uCyan, glyphSeed) * outerRing * 0.72;
+      premultiplied += mix(uPink, uCyan, signalSeed) * outerRing * 0.72;
       float alpha = clamp(max(expanded, max(redGhost, cyanGhost) * dropout), 0.0, 1.0);
       return vec4(premultiplied, alpha);
     }
 
     void main() {
       vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
-      float id = texture(uIdTexture, uv).r;
-      float hasCell = step(0.002, id);
       vec3 background = backgroundColor(uv);
 
       if (uDebugId > 0.5) {
@@ -745,6 +772,24 @@
         float coverage = sampleCoverage(uv);
         vec3 debugColor = mix(vec3(0.008, 0.009, 0.014), idPalette(inkId), coverage);
         fragColor = vec4(debugColor, 1.0);
+        return;
+      }
+
+      if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
+        vec4 dotMaterial = dotGlitchMaterial(uv);
+        vec2 dotFaceUv = dotPerspectiveSourceUv(uv, 0.0);
+        float dotFaceD = mergedRawDistancePx(dotFaceUv) + ${BODY_INFLATE.toFixed(1)};
+        float dotFaceAA = max(1.65, fwidth(dotFaceD) * 1.35);
+        float dotFaceFill = smoothstep(-dotFaceAA, dotFaceAA, dotFaceD);
+        float dotGlow = exp(-max(-dotFaceD, 0.0) / 16.0)
+          * (1.0 - dotFaceFill)
+          * uGlow;
+        vec3 dotBackground = background
+          + mix(uPink, uCyan, uv.x) * dotGlow * 0.24;
+        fragColor = vec4(
+          dotBackground * (1.0 - dotMaterial.a) + dotMaterial.rgb,
+          1.0
+        );
         return;
       }
 
@@ -782,11 +827,11 @@
       ` : ""}
 
       // The body crown and edge roll are intentionally separate. Body height
-      // comes from per-glyph blurred coverage, so strong curvature stays near
-      // the silhouette and never inherits the glyph's medial axis.
-      // both come from one smooth shading SDF, while raw SDF only clips shape.
+      // comes from one artwork-wide blurred coverage field, so close glyphs
+      // share a continuous surface without inheriting the SDF medial axis.
       float bodyStepPx = 5.0;
       vec2 bodyStep = vec2(bodyStepPx) / uTextureSize;
+      vec2 centerShape = sampleShapeData16(uv);
       float bodyLeft = sampleShapeData16(uv - vec2(bodyStep.x, 0.0)).x;
       float bodyRight = sampleShapeData16(uv + vec2(bodyStep.x, 0.0)).x;
       float bodyTop = sampleShapeData16(uv - vec2(0.0, bodyStep.y)).x;
@@ -816,12 +861,29 @@
       vec2 edgeNormalXY = -edgeDirection * edgeSlope;
       vec2 normalXY = mix(bodyNormalXY, edgeNormalXY, edgeMix);
 
-      vec4 glyphBounds = boundsForId(id);
-      vec2 glyphSize = max(glyphBounds.zw, vec2(0.02));
-      vec2 glyphLocal = clamp((uv - glyphBounds.xy) / glyphSize, vec2(-0.75), vec2(0.75));
-      // A very shallow analytic crown keeps the broad face alive without
-      // following individual strokes or creating a centre-line discontinuity.
-      normalXY += glyphLocal * vec2(0.0024, 0.0017) * uBodyCrown * hasCell;
+      vec2 artworkSize = max(uArtworkBounds.zw, vec2(1.0) / uTextureSize);
+      vec2 artworkLocal = clamp(
+        (uv - uArtworkBounds.xy) / artworkSize,
+        vec2(-0.75),
+        vec2(0.75)
+      );
+      float semanticId = texture(uIdTexture, uv).g;
+      float hasSemanticId = step(0.5 / 255.0, semanticId);
+      float semanticWeight = hasSemanticId
+        * smoothstep(0.55, 0.90, centerShape.y);
+      vec4 glyphMetadata = glyphMetadataForId(semanticId);
+      vec2 glyphSize = max(glyphMetadata.zw, vec2(1.0) / uTextureSize);
+      vec2 glyphLocal = clamp(
+        (uv - glyphMetadata.xy) / glyphSize,
+        vec2(-0.75),
+        vec2(0.75)
+      );
+      // Semantic ID restores each glyph's local lighting coordinates, but it
+      // never gates geometry. Inflated/AA edges blend smoothly back to the
+      // artwork coordinate field instead of creating an owner-cell seam.
+      vec2 materialLocal = mix(artworkLocal, glyphLocal, semanticWeight);
+      normalXY += materialLocal * vec2(0.0024, 0.0017) * uBodyCrown
+        * smoothstep(0.001, 0.08, centerShape.x);
 
       vec2 noiseUv = uv * vec2(1.35, 1.85) + vec2(2.7, -1.9);
       vec2 liquid = texture(uNoiseTexture, noiseUv).rg - 0.5;
@@ -834,10 +896,9 @@
 
       vec3 reflected = reflect(vec3(0.0, 0.0, -1.0), normal);
       vec2 fieldUv = colorFieldUv(reflected);
-      float glyphSeed = fract(floor(id * 255.0 + 0.5) * 0.6180339);
-      // Preserve a low-frequency per-glyph bias without turning the reflection
-      // into a flat vertical decal. Surface normal remains the primary lookup.
-      fieldUv += glyphLocal * vec2(0.020, 0.12);
+      // Surface normal remains the primary lookup. Local semantic coordinates
+      // spread highlights per glyph while merged fields retain one silhouette.
+      fieldUv += materialLocal * vec2(0.020, 0.12);
       // Scale around the lookup centre so a broad, nearly flat glyph face can
       // traverse more of the environment without distorting its normal. Keep
       // Y expansion conservative so the field retains a stable horizon.
@@ -846,7 +907,8 @@
         1.0 + (uEnvCoverage - 1.0) * 0.35
       );
       fieldUv = vec2(0.5) + (fieldUv - vec2(0.5)) * coverageScale;
-      fieldUv.x += (glyphSeed - 0.5) * 0.028;
+      float glyphSeed = fract(floor(semanticId * 255.0 + 0.5) * 0.6180339);
+      fieldUv.x += mix(-0.0033, (glyphSeed - 0.5) * 0.028, semanticWeight);
       fieldUv += uReflectionOffset;
       fieldUv.y = clamp(fieldUv.y, 0.002, 0.998);
 
@@ -871,43 +933,39 @@
       chromeLinear += vec3(areaLight * mix(0.10, 0.38, uReflection) * mix(0.72, 1.0, uColorFieldStrength));
       chromeLinear += srgbToLinear(edgeTint) * fresnel * mix(0.12, 0.56, uReflection);
       chromeLinear *= 0.94 + normal.z * 0.08;
-      vec3 chrome = linearToSrgb(acesApprox(chromeLinear * 0.98));
+      // Full-artwork fields produce a broader, calmer normal distribution than
+      // the former per-glyph cells. Preserve highlight detail before ACES
+      // instead of letting that concentrated reflection plateau near white.
+      vec3 chrome = linearToSrgb(acesApprox(chromeLinear * 0.90));
       if (uMaterialMode < 0.5) {
         chrome = gradeLiquidChrome(chrome);
       }
 
       vec2 extrusionOffset = vec2(-0.68, -1.0) * uExtrusion / uTextureSize;
-      float backD = signedDistance(uv + extrusionOffset) + 3.5;
+      float backD = mergedRawDistancePx(uv + extrusionOffset) + 3.5;
       float sweptD = smoothMax(surfaceD, backD, max(0.05, uExtrusion * 0.32));
       float extrusionAA = edgeAA(sweptD) * 1.35;
       float extrusion = smoothstep(-extrusionAA, extrusionAA, sweptD) * (1.0 - fill);
 
       vec2 shadowOffset = vec2(-0.68, -1.0) * (uExtrusion + 10.0) / uTextureSize;
-      float shadowD = signedDistance(uv + shadowOffset) + 3.5;
+      float shadowD = mergedRawDistancePx(uv + shadowOffset) + 3.5;
       float shadowMask = smoothstep(-14.0, 2.0, shadowD) * (1.0 - fill);
       float shadow = shadowMask * 0.22 * smoothstep(0.0, 2.0, uExtrusion);
 
       vec3 color = background;
       color = mix(color, vec3(0.18, 0.055, 0.22), shadow);
-      // DOT owns an ID-gated magenta underprint; do not stack the generic
-      // shifted SDF extrusion underneath it.
-      float genericExtrusion = extrusion * (1.0 - step(0.5, uMaterialMode) * (1.0 - step(1.5, uMaterialMode)));
       float extrusionOpacity = mix(0.84, 0.88, step(1.5, uMaterialMode));
-      color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, genericExtrusion * extrusionOpacity);
+      color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, extrusion * extrusionOpacity);
       color += mix(uPink, uCyan, uv.x) * glow * 0.28;
-      if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
-        vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
-        vec4 dotMaterial = dotGlitchMaterial(uv, id, localPx, aa);
-        color = color * (1.0 - dotMaterial.a) + dotMaterial.rgb;
-        fragColor = vec4(color, 1.0);
-        return;
-      }
       if (uMaterialMode > 1.5) {
-        vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
+        vec2 artworkLocalPx = artworkLocal * artworkSize * uTextureSize;
+        vec2 glyphLocalPx = (uv - glyphMetadata.xy) * uTextureSize;
+        vec2 signalLocalPx = mix(artworkLocalPx, glyphLocalPx, semanticWeight);
+        float signalSeed = mix(0.381966, glyphSeed, semanticWeight);
         vec4 vhsMaterial = vhsChromeMaterial(
           uv,
-          id,
-          localPx,
+          signalLocalPx,
+          signalSeed,
           surfaceD,
           fill,
           aa,
@@ -994,6 +1052,18 @@
     }
   `;
 
+  const copyFragmentShaderSource = `#version 300 es
+    precision highp float;
+
+    in vec2 vUv;
+    layout(location = 0) out vec4 fragColor;
+    uniform sampler2D uSceneTexture;
+
+    void main() {
+      fragColor = texture(uSceneTexture, vUv);
+    }
+  `;
+
   function compileShader(type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -1025,9 +1095,11 @@
 
   let program;
   let crtProgram;
+  let copyProgram;
   try {
     program = createProgram();
     crtProgram = createProgram(crtFragmentShaderSource);
+    copyProgram = createProgram(copyFragmentShaderSource);
   } catch (error) {
     ui.renderError.hidden = false;
     ui.renderError.textContent = error.message;
@@ -1040,7 +1112,7 @@
     shapeTexture: gl.getUniformLocation(program, "uShapeTexture"),
     distanceTexture: gl.getUniformLocation(program, "uDistanceTexture"),
     idTexture: gl.getUniformLocation(program, "uIdTexture"),
-    boundsTexture: gl.getUniformLocation(program, "uBoundsTexture"),
+    glyphMetadataTexture: gl.getUniformLocation(program, "uGlyphMetadataTexture"),
     noiseTexture: gl.getUniformLocation(program, "uNoiseTexture"),
     colorFieldTexture: gl.getUniformLocation(program, "uColorFieldTexture"),
     normalTexture: gl.getUniformLocation(program, "uNormalTexture"),
@@ -1057,6 +1129,8 @@
     liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
     dotPitch: gl.getUniformLocation(program, "uDotPitch"),
     glitchStrength: gl.getUniformLocation(program, "uGlitchStrength"),
+    perspectiveAngle: gl.getUniformLocation(program, "uPerspectiveAngle"),
+    artworkBounds: gl.getUniformLocation(program, "uArtworkBounds"),
     extrusion: gl.getUniformLocation(program, "uExtrusion"),
     glow: gl.getUniformLocation(program, "uGlow"),
     sceneDetail: gl.getUniformLocation(program, "uSceneDetail"),
@@ -1071,6 +1145,10 @@
     sceneSize: gl.getUniformLocation(crtProgram, "uSceneSize"),
     scanlineSpacing: gl.getUniformLocation(crtProgram, "uScanlineSpacing"),
     scanlineStrength: gl.getUniformLocation(crtProgram, "uScanlineStrength"),
+  };
+  const copyLocations = {
+    position: gl.getAttribLocation(copyProgram, "aPosition"),
+    sceneTexture: gl.getUniformLocation(copyProgram, "uSceneTexture"),
   };
 
   const quadBuffer = gl.createBuffer();
@@ -1094,7 +1172,7 @@
 
   const shapeTexture = createTexture(gl.TEXTURE0, gl.NEAREST);
   const idTexture = createTexture(gl.TEXTURE1, gl.NEAREST);
-  const boundsTexture = createTexture(gl.TEXTURE2, gl.NEAREST);
+  const glyphMetadataTexture = createTexture(gl.TEXTURE2, gl.NEAREST);
   const noiseTexture = createTexture(gl.TEXTURE3, gl.LINEAR, gl.REPEAT);
   const distanceTexture = createTexture(gl.TEXTURE4, gl.NEAREST);
   let colorFieldTexture = createTexture(gl.TEXTURE5, gl.LINEAR);
@@ -1191,7 +1269,7 @@
     ));
   }
 
-  function updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels, boundsPixels) {
+  function updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels) {
     drawGeneratedAsset("coverage", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
       const coverage = shapePixels[sourceIndex + 2];
       writeRgb(output, index, coverage, coverage, coverage);
@@ -1234,14 +1312,6 @@
       const coverage = shapePixels[sourceIndex + 2] / 255;
       writeRgb(output, index, color[0] * coverage, color[1] * coverage, color[2] * coverage);
     });
-
-    const boundsCanvas = ui.generatedAssetCanvases.get("bounds-lut");
-    if (boundsCanvas) {
-      boundsCanvas.width = 256;
-      boundsCanvas.height = 2;
-      const context = boundsCanvas.getContext("2d");
-      context.putImageData(new ImageData(new Uint8ClampedArray(boundsPixels), 256, 2), 0, 0);
-    }
   }
 
   const REFLECTION_FIELD_WIDTH = 512;
@@ -1312,7 +1382,6 @@
       url,
       signature: `builtin:${styleKey}:${url}`,
       custom: false,
-      textureAspect: REFLECTION_TEXTURE_ASPECTS[styleKey] || 1,
     };
   }
 
@@ -1360,10 +1429,10 @@
     });
   }
 
-  function normalizeReflectionImage(image, textureAspect = 1) {
+  function normalizeReflectionImage(image) {
     const canvas = document.createElement("canvas");
     canvas.width = REFLECTION_FIELD_WIDTH;
-    canvas.height = Math.round(REFLECTION_FIELD_HEIGHT / textureAspect);
+    canvas.height = REFLECTION_FIELD_HEIGHT;
     const context = canvas.getContext("2d", { alpha: false });
     context.fillStyle = "#000";
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -1401,7 +1470,7 @@
     pending = loadReflectionImage(descriptor)
       .then((image) => ({
         ...descriptor,
-        canvas: normalizeReflectionImage(image, descriptor.textureAspect),
+        canvas: normalizeReflectionImage(image),
       }))
       .catch((error) => {
         if (reflectionFieldCache.get(descriptor.signature) === pending) {
@@ -1659,25 +1728,6 @@
     );
   }
 
-  function distributeCellEdges(records, minPadding) {
-    if (records.length === 0) return;
-    records[0].cellLeft = records[0].inkLeft - minPadding;
-    for (let index = 0; index < records.length - 1; index += 1) {
-      const current = records[index];
-      const next = records[index + 1];
-      const gap = next.inkLeft - current.inkRight;
-      if (gap >= minPadding * 2) {
-        current.cellRight = current.inkRight + minPadding;
-        next.cellLeft = next.inkLeft - minPadding;
-      } else {
-        const boundary = (current.inkRight + next.inkLeft) * 0.5;
-        current.cellRight = boundary;
-        next.cellLeft = boundary;
-      }
-    }
-    records[records.length - 1].cellRight = records[records.length - 1].inkRight + minPadding;
-  }
-
   function fitLayout(lines) {
     let fontSize = 620;
     const maxWidth = TEXTURE_WIDTH * 0.90;
@@ -1754,30 +1804,25 @@
     }
   }
 
-  function encodeNormalized16(value) {
-    const packed = Math.round(Math.max(0, Math.min(1, value)) * 65535);
-    return [packed >> 8, packed & 255];
-  }
-
   function encodeSigned16(value, range) {
     const normalized = Math.max(-1, Math.min(1, value / range));
     const packed = Math.round((normalized * 0.5 + 0.5) * 65535);
     return [packed >> 8, packed & 255];
   }
 
-  function writeGlyphEdgeGradient(glyph, shadingField, normalPixels, width, height) {
-    const left = Math.max(1, Math.floor(glyph.cellLeft));
-    const right = Math.min(width - 1, Math.ceil(glyph.cellRight));
-    const top = Math.max(1, Math.floor(glyph.cellTop));
-    const bottom = Math.min(height - 1, Math.ceil(glyph.cellBottom));
-    const sample = (x, y) => {
-      const clampedX = Math.max(glyph.cellLeft, Math.min(glyph.cellRight - 1, x));
-      const clampedY = Math.max(glyph.cellTop, Math.min(glyph.cellBottom - 1, y));
-      return shadingField[clampedY * width + clampedX];
-    };
+  function encodeNormalized16(value) {
+    const packed = Math.round(Math.max(0, Math.min(1, value)) * 65535);
+    return [packed >> 8, packed & 255];
+  }
 
-    for (let y = top; y < bottom; y += 1) {
-      for (let x = left; x < right; x += 1) {
+  function writeArtworkEdgeGradient(shadingField, normalPixels, width, height) {
+    const sample = (x, y) => (
+      x < 0 || x >= width || y < 0 || y >= height
+        ? -SHADING_SDF_SPREAD
+        : shadingField[y * width + x]
+    );
+    for (let y = 0; y < height; y += 1) {
+      for (let x = 0; x < width; x += 1) {
         const surfaceDistance = shadingField[y * width + x] + BODY_INFLATE;
         if (surfaceDistance < -4 || surfaceDistance > 19) continue;
 
@@ -1792,6 +1837,78 @@
         normalPixels[output + 3] = encodedY[1];
       }
     }
+  }
+
+  function createSemanticIdPixels(alphaPixels, glyphs) {
+    const pixelCount = TEXTURE_WIDTH * TEXTURE_HEIGHT;
+    const ownerCoverage = new Uint8Array(pixelCount);
+    const semanticIds = new Uint8Array(pixelCount);
+    idContext.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    idContext.font = sourceContext.font;
+    idContext.textBaseline = "alphabetic";
+    idContext.fillStyle = "#ffffff";
+
+    glyphs.forEach((record) => {
+      const left = Math.max(0, Math.floor(record.inkLeft) - 8);
+      const top = Math.max(0, Math.floor(record.inkTop) - 8);
+      const right = Math.min(TEXTURE_WIDTH, Math.ceil(record.inkRight) + 8);
+      const bottom = Math.min(TEXTURE_HEIGHT, Math.ceil(record.inkBottom) + 8);
+      const width = right - left;
+      const height = bottom - top;
+      if (width <= 0 || height <= 0) return;
+
+      idContext.clearRect(left, top, width, height);
+      idContext.fillText(record.glyph, record.x, record.baseline);
+      const mask = idContext.getImageData(left, top, width, height).data;
+      for (let y = 0; y < height; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const maskAlpha = mask[(y * width + x) * 4 + 3];
+          if (maskAlpha === 0) continue;
+          const pixel = (top + y) * TEXTURE_WIDTH + left + x;
+          // Maximum local coverage gives overlapping glyphs one deterministic,
+          // valid ID without ever blending two integer labels together.
+          if (maskAlpha >= ownerCoverage[pixel]) {
+            ownerCoverage[pixel] = maskAlpha;
+            semanticIds[pixel] = record.idByte;
+          }
+        }
+      }
+    });
+
+    const idPixels = new Uint8Array(pixelCount * 4);
+    for (let pixel = 0; pixel < pixelCount; pixel += 1) {
+      const output = pixel * 4;
+      const idByte = alphaPixels[output + 3] > 0 ? semanticIds[pixel] : 0;
+      idPixels[output] = idByte;
+      idPixels[output + 1] = idByte;
+      idPixels[output + 3] = 255;
+    }
+    return idPixels;
+  }
+
+  function createGlyphMetadataPixels(glyphs) {
+    const pixels = new Uint8Array(256 * 2 * 4);
+    glyphs.forEach((record) => {
+      const centerX = (record.inkLeft + record.inkRight) * 0.5 / TEXTURE_WIDTH;
+      const centerY = (record.inkTop + record.inkBottom) * 0.5 / TEXTURE_HEIGHT;
+      const width = Math.max(1, record.inkRight - record.inkLeft) / TEXTURE_WIDTH;
+      const height = Math.max(1, record.inkBottom - record.inkTop) / TEXTURE_HEIGHT;
+      const centerXBytes = encodeNormalized16(centerX);
+      const centerYBytes = encodeNormalized16(centerY);
+      const widthBytes = encodeNormalized16(width);
+      const heightBytes = encodeNormalized16(height);
+      const centerOffset = record.idByte * 4;
+      const sizeOffset = (256 + record.idByte) * 4;
+      pixels[centerOffset] = centerXBytes[0];
+      pixels[centerOffset + 1] = centerXBytes[1];
+      pixels[centerOffset + 2] = centerYBytes[0];
+      pixels[centerOffset + 3] = centerYBytes[1];
+      pixels[sizeOffset] = widthBytes[0];
+      pixels[sizeOffset + 1] = widthBytes[1];
+      pixels[sizeOffset + 2] = heightBytes[0];
+      pixels[sizeOffset + 3] = heightBytes[1];
+    });
+    return pixels;
   }
   function rebuildTextures() {
     const startedAt = performance.now();
@@ -1849,44 +1966,25 @@
     });
 
     state.glyphs = recordsByLine.flat();
-    recordsByLine.forEach((records) => distributeCellEdges(records, 6));
-    const verticalCenters = lines.map((_, lineIndex) => firstBaseline + lineIndex * lineHeightPx - layout.fontSize * 0.35);
-    state.glyphs.forEach((record) => {
-      const records = recordsByLine[record.lineIndex];
-      const position = records.indexOf(record);
-      const previous = records[position - 1];
-      const next = records[position + 1];
-      const left = Number.isFinite(record.cellLeft)
-        ? record.cellLeft
-        : previous ? (previous.inkRight + record.inkLeft) * 0.5 : record.inkLeft - SDF_SPREAD * 1.25;
-      const right = Number.isFinite(record.cellRight)
-        ? record.cellRight
-        : next ? (record.inkRight + next.inkLeft) * 0.5 : record.inkRight + SDF_SPREAD * 1.25;
-      const previousCenter = verticalCenters[record.lineIndex - 1];
-      const nextCenter = verticalCenters[record.lineIndex + 1];
-      const center = verticalCenters[record.lineIndex];
-      const top = previousCenter === undefined ? record.inkTop - SDF_SPREAD * 1.1 : (previousCenter + center) * 0.5;
-      const bottom = nextCenter === undefined ? record.inkBottom + SDF_SPREAD * 1.1 : (center + nextCenter) * 0.5;
-      record.cellLeft = Math.max(0, Math.floor(left));
-      record.cellRight = Math.min(TEXTURE_WIDTH, Math.ceil(right));
-      record.cellTop = Math.max(0, Math.floor(top));
-      record.cellBottom = Math.min(TEXTURE_HEIGHT, Math.ceil(bottom));
-      record.centerX = (record.inkLeft + record.inkRight) * 0.5 / TEXTURE_WIDTH;
-      record.centerY = (record.inkTop + record.inkBottom) * 0.5 / TEXTURE_HEIGHT;
-      idContext.fillStyle = `rgb(${record.idByte}, 0, 0)`;
-      idContext.fillRect(
-        record.cellLeft,
-        record.cellTop,
-        record.cellRight - record.cellLeft,
-        record.cellBottom - record.cellTop,
-      );
-    });
 
     const alphaPixels = sourceContext.getImageData(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT).data;
+    let artworkLeft = TEXTURE_WIDTH;
+    let artworkRight = -1;
+    let artworkTop = TEXTURE_HEIGHT;
+    let artworkBottom = -1;
     const shapePixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
     const distancePixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
     const normalPixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
     for (let index = 0; index < shapePixels.length; index += 4) {
+      if (alphaPixels[index + 3] > 0) {
+        const pixel = index / 4;
+        const x = pixel % TEXTURE_WIDTH;
+        const y = Math.floor(pixel / TEXTURE_WIDTH);
+        artworkLeft = Math.min(artworkLeft, x);
+        artworkRight = Math.max(artworkRight, x + 1);
+        artworkTop = Math.min(artworkTop, y);
+        artworkBottom = Math.max(artworkBottom, y + 1);
+      }
       shapePixels[index] = 0;
       shapePixels[index + 1] = 0;
       shapePixels[index + 2] = alphaPixels[index + 3];
@@ -1896,6 +1994,16 @@
       normalPixels[index + 2] = 128;
       normalPixels[index + 3] = 0;
     }
+    state.artworkBounds = artworkRight > artworkLeft && artworkBottom > artworkTop
+      ? [
+        (artworkLeft + artworkRight) * 0.5 / TEXTURE_WIDTH,
+        (artworkTop + artworkBottom) * 0.5 / TEXTURE_HEIGHT,
+        (artworkRight - artworkLeft) / TEXTURE_WIDTH,
+        (artworkBottom - artworkTop) / TEXTURE_HEIGHT,
+      ]
+      : [0.5, 0.5, 0.90, 0.78];
+    const idPixels = createSemanticIdPixels(alphaPixels, state.glyphs);
+    const glyphMetadataPixels = createGlyphMetadataPixels(state.glyphs);
 
     if (state.glyphs.length > 0) {
       const width = TEXTURE_WIDTH;
@@ -1930,21 +2038,19 @@
       // Screened/blurred coverage creates a wide shallow face whose stronger
       // curvature is confined to the edge band.
       const bodySigma = Math.max(7, Math.min(14, layout.fontSize * 0.018));
-      const smoothHeight = createGlyphBodyHeight(
+      const smoothHeight = createArtworkBodyHeight(
         alphaPixels,
         width,
         height,
-        state.glyphs,
         bodySigma,
       );
-      const shadingField = createGlyphShadingDistance(
+      const shadingField = createArtworkShadingDistance(
         signedField,
         width,
         height,
-        state.glyphs,
         SHADING_SDF_SPREAD,
       );
-      state.glyphs.forEach((glyph) => writeGlyphEdgeGradient(glyph, shadingField, normalPixels, width, height));
+      writeArtworkEdgeGradient(shadingField, normalPixels, width, height);
 
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
@@ -1969,31 +2075,7 @@
       }
     }
 
-    const idSource = idContext.getImageData(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT).data;
-    const idPixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
-    for (let index = 0; index < idPixels.length; index += 4) {
-      idPixels[index] = idSource[index];
-      idPixels[index + 1] = alphaPixels[index + 3] > 0 ? idSource[index] : 0;
-      idPixels[index + 3] = 255;
-    }
-
-    const boundsPixels = new Uint8Array(256 * 2 * 4);
-    state.glyphs.forEach((record) => {
-      const centerOffset = record.idByte * 4;
-      const sizeOffset = (256 + record.idByte) * 4;
-      const centerXBytes = encodeNormalized16(record.centerX);
-      const centerYBytes = encodeNormalized16(record.centerY);
-      boundsPixels[centerOffset] = centerXBytes[0];
-      boundsPixels[centerOffset + 1] = centerXBytes[1];
-      boundsPixels[centerOffset + 2] = centerYBytes[0];
-      boundsPixels[centerOffset + 3] = centerYBytes[1];
-      boundsPixels[sizeOffset] = Math.round(((record.inkRight - record.inkLeft) / TEXTURE_WIDTH) * 255);
-      boundsPixels[sizeOffset + 1] = Math.round(((record.inkBottom - record.inkTop) / TEXTURE_HEIGHT) * 255);
-      boundsPixels[sizeOffset + 2] = record.idByte;
-      boundsPixels[sizeOffset + 3] = 255;
-    });
-
-    updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels, boundsPixels);
+    updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels);
 
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.activeTexture(gl.TEXTURE0);
@@ -2003,8 +2085,8 @@
     gl.bindTexture(gl.TEXTURE_2D, idTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, idPixels);
     gl.activeTexture(gl.TEXTURE2);
-    gl.bindTexture(gl.TEXTURE_2D, boundsTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, boundsPixels);
+    gl.bindTexture(gl.TEXTURE_2D, glyphMetadataTexture);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 256, 2, 0, gl.RGBA, gl.UNSIGNED_BYTE, glyphMetadataPixels);
     gl.activeTexture(gl.TEXTURE4);
     gl.bindTexture(gl.TEXTURE_2D, distanceTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, distancePixels);
@@ -2014,7 +2096,7 @@
 
     ui.glyphReadout.textContent = `${String(state.glyphs.length).padStart(2, "0")} GLYPHS`;
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
-    ui.renderStatus.textContent = "SDF READY";
+    ui.renderStatus.textContent = "BAKE READY";
     render();
   }
 
@@ -2072,13 +2154,11 @@
 
   function render() {
     resizeCanvas();
-    let useCrt = activePreset().mode > 1.5 && !state.debugId;
-    if (useCrt) {
-      // Keep the CRT raster tied to the 1600×900 artboard instead of browser
-      // DPR. This caps the FBO at 5.5 MiB and makes scanline spacing stable.
-      useCrt = ensureSceneTarget(TEXTURE_WIDTH, TEXTURE_HEIGHT);
-    }
-    if (useCrt) {
+    // Every material is baked to the canonical artboard first. The responsive
+    // canvas is now only a presentation surface; export can read this exact
+    // 1600×900 texture without re-running a glyph-atlas renderer.
+    const bakeReady = ensureSceneTarget(TEXTURE_WIDTH, TEXTURE_HEIGHT);
+    if (bakeReady) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
       gl.viewport(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     } else {
@@ -2089,13 +2169,21 @@
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
     gl.enableVertexAttribArray(locations.position);
     gl.vertexAttribPointer(locations.position, 2, gl.FLOAT, false, 0, 0);
-    [shapeTexture, idTexture, boundsTexture, noiseTexture, distanceTexture, colorFieldTexture, normalTexture].forEach((texture, index) => {
-      gl.activeTexture(gl.TEXTURE0 + index);
+    [
+      [0, shapeTexture],
+      [1, idTexture],
+      [2, glyphMetadataTexture],
+      [3, noiseTexture],
+      [4, distanceTexture],
+      [5, colorFieldTexture],
+      [6, normalTexture],
+    ].forEach(([unit, texture]) => {
+      gl.activeTexture(gl.TEXTURE0 + unit);
       gl.bindTexture(gl.TEXTURE_2D, texture);
     });
     gl.uniform1i(locations.shapeTexture, 0);
     gl.uniform1i(locations.idTexture, 1);
-    gl.uniform1i(locations.boundsTexture, 2);
+    gl.uniform1i(locations.glyphMetadataTexture, 2);
     gl.uniform1i(locations.noiseTexture, 3);
     gl.uniform1i(locations.distanceTexture, 4);
     gl.uniform1i(locations.colorFieldTexture, 5);
@@ -2117,6 +2205,8 @@
     gl.uniform1f(locations.liquidWarp, state.liquidWarp / 1000);
     gl.uniform1f(locations.dotPitch, state.dotPitch);
     gl.uniform1f(locations.glitchStrength, state.glitchStrength / 100);
+    gl.uniform1f(locations.perspectiveAngle, state.perspectiveAngle);
+    gl.uniform4fv(locations.artworkBounds, state.artworkBounds);
     gl.uniform1f(locations.extrusion, state.extrusion);
     gl.uniform1f(locations.glow, state.glow / 100);
     gl.uniform1f(locations.sceneDetail, state.sceneDetail / 100);
@@ -2126,19 +2216,24 @@
     gl.uniform1f(locations.materialMode, activePreset().mode);
     gl.drawArrays(gl.TRIANGLES, 0, 6);
 
-    if (!useCrt) return;
+    if (!bakeReady) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
-    gl.useProgram(crtProgram);
+    const useCrt = activePreset().mode > 1.5 && !state.debugId;
+    const presentProgram = useCrt ? crtProgram : copyProgram;
+    const presentLocations = useCrt ? crtLocations : copyLocations;
+    gl.useProgram(presentProgram);
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
-    gl.enableVertexAttribArray(crtLocations.position);
-    gl.vertexAttribPointer(crtLocations.position, 2, gl.FLOAT, false, 0, 0);
+    gl.enableVertexAttribArray(presentLocations.position);
+    gl.vertexAttribPointer(presentLocations.position, 2, gl.FLOAT, false, 0, 0);
     gl.activeTexture(gl.TEXTURE7);
     gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
-    gl.uniform1i(crtLocations.sceneTexture, 7);
-    gl.uniform2f(crtLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-    gl.uniform1f(crtLocations.scanlineSpacing, state.vhsScanlineSpacing);
-    gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
+    gl.uniform1i(presentLocations.sceneTexture, 7);
+    if (useCrt) {
+      gl.uniform2f(crtLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+      gl.uniform1f(crtLocations.scanlineSpacing, state.vhsScanlineSpacing);
+      gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 6);
   }
 
@@ -2173,9 +2268,11 @@
     ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
     ui.liquidWarpInput.value = String(state.liquidWarp);
     ui.dotPitchInput.value = String(state.dotPitch);
+    ui.perspectiveAngleInput.value = String(state.perspectiveAngle);
     ui.glitchStrengthInput.value = String(state.glitchStrength);
     ui.vhsScanlineSpacingInput.value = String(state.vhsScanlineSpacing);
     ui.vhsScanlineStrengthInput.value = String(state.vhsScanlineStrength);
+    ui.extrusionInput.max = activePreset().mode === 1 ? "80" : "24";
     ui.extrusionInput.value = String(state.extrusion);
     ui.glowInput.value = String(state.glow);
     ui.sceneDetailInput.value = String(state.sceneDetail);
@@ -2193,6 +2290,7 @@
     ui.reflectionOffsetYValue.value = `${state.reflectionOffsetY > 0 ? "+" : ""}${state.reflectionOffsetY}%`;
     ui.liquidWarpValue.value = `${state.liquidWarp}%`;
     ui.dotPitchValue.value = `${state.dotPitch} PX`;
+    ui.perspectiveAngleValue.value = `${state.perspectiveAngle}°`;
     ui.glitchStrengthValue.value = `${state.glitchStrength}%`;
     ui.vhsScanlineSpacingValue.value = `${state.vhsScanlineSpacing} PX`;
     ui.vhsScanlineStrengthValue.value = `${state.vhsScanlineStrength}%`;
@@ -2226,6 +2324,7 @@
     [ui.reflectionOffsetYInput, "reflectionOffsetY", ui.reflectionOffsetYValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.liquidWarpInput, "liquidWarp", ui.liquidWarpValue, (value) => `${value}%`],
     [ui.dotPitchInput, "dotPitch", ui.dotPitchValue, (value) => `${value} PX`],
+    [ui.perspectiveAngleInput, "perspectiveAngle", ui.perspectiveAngleValue, (value) => `${value}°`],
     [ui.glitchStrengthInput, "glitchStrength", ui.glitchStrengthValue, (value) => `${value}%`],
     [ui.vhsScanlineSpacingInput, "vhsScanlineSpacing", ui.vhsScanlineSpacingValue, (value) => `${value} PX`],
     [ui.vhsScanlineStrengthInput, "vhsScanlineStrength", ui.vhsScanlineStrengthValue, (value) => `${value}%`],

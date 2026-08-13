@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>Y2K Type Material Lab</title>
-    <link rel="stylesheet" href="./art-text.css?v=9" />
+    <link rel="stylesheet" href="./art-text.css?v=11" />
   </head>
   <body>
     <main class="app-shell">
@@ -70,8 +70,8 @@
               <button class="reflection-card" type="button" data-reflection-style="prism" aria-pressed="false">
                 <canvas width="224" height="224" aria-hidden="true"></canvas><span>PRISM MERCURY</span>
               </button>
-              <button class="reflection-card reflection-card-featured" type="button" data-reflection-style="neon" aria-pressed="false">
-                <canvas width="448" height="224" aria-hidden="true"></canvas><span>NEON MONSOON</span>
+              <button class="reflection-card" type="button" data-reflection-style="neon" aria-pressed="false">
+                <canvas width="224" height="224" aria-hidden="true"></canvas><span>NEON MONSOON</span>
               </button>
             </div>
             <div class="reflection-url-control reflection-library-url" data-materials="liquid vhs">
@@ -86,8 +86,8 @@
 
           <section class="asset-library" aria-labelledby="assetLibraryTitle">
             <header class="asset-library-title">
-              <div><strong id="assetLibraryTitle">RUNTIME MAPS</strong><small>LIVE GLYPH BUFFERS</small></div>
-              <span>09 VIEWS</span>
+              <div><strong id="assetLibraryTitle">BAKED MAP SET</strong><small>OFFLINE 1600×900 SOURCES</small></div>
+              <span>08 VIEWS</span>
             </header>
             <div class="asset-grid">
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="flow" aria-hidden="true"></canvas><figcaption><b>FLOW NOISE</b><span>RG8 · VIS</span></figcaption></figure>
@@ -97,8 +97,7 @@
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="clip-sdf" aria-hidden="true"></canvas><figcaption><b>CLIP SDF</b><span>RG PACKED · VIS</span></figcaption></figure>
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="shading-sdf" aria-hidden="true"></canvas><figcaption><b>SHADING SDF</b><span>BA PACKED · VIS</span></figcaption></figure>
               <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="normal" aria-hidden="true"></canvas><figcaption><b>NORMAL XY</b><span>RGBA PACKED · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b>GLYPH ID</b><span>G8 · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="256" height="2" data-generated-asset="bounds-lut" aria-hidden="true"></canvas><figcaption><b>BOUNDS LUT</b><span>256×2 · RGBA8 RAW</span></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b>SEMANTIC ID</b><span>G8 · DEBUG</span></figcaption></figure>
             </div>
           </section>
         </aside>
@@ -108,7 +107,7 @@
             <div><span>ARTBOARD</span><strong>1600 × 900</strong></div>
             <div class="view-actions" role="group" aria-label="画布视图">
               <button class="view-button is-active" id="materialViewButton" type="button">MATERIAL</button>
-              <button class="view-button" id="idViewButton" type="button">ID MAP</button>
+              <button class="view-button" id="idViewButton" type="button">SEMANTIC ID</button>
             </div>
             <span id="glyphReadout">00 GLYPHS</span>
           </div>
@@ -124,7 +123,7 @@
 
           <footer class="canvas-status">
             <span><i class="status-dot"></i><b id="renderStatus">BUILDING SDF</b></span>
-            <span>DUAL 16-BIT SDF · 16-BIT NORMAL · GLYPH ID</span>
+            <span>1600×900 BAKE · MERGED SDF · SEMANTIC ID</span>
             <span id="buildTime">0 MS</span>
           </footer>
         </section>
@@ -211,6 +210,10 @@ CHROME</textarea>
               <span><b>DOT SIZE</b><output id="dotPitchValue">9 PX</output></span>
               <input id="dotPitchInput" type="range" min="4" max="12" value="9" step="1" />
             </label>
+            <label class="range-control" for="perspectiveAngleInput" data-materials="dot">
+              <span><b>PERSPECTIVE ANGLE</b><output id="perspectiveAngleValue">52°</output></span>
+              <input id="perspectiveAngleInput" type="range" min="0" max="75" value="52" step="1" />
+            </label>
             <label class="range-control" for="glitchStrengthInput" data-materials="dot">
               <span><b>GLITCH</b><output id="glitchStrengthValue">78%</output></span>
               <input id="glitchStrengthInput" type="range" min="0" max="100" value="78" step="1" />
@@ -253,8 +256,8 @@ CHROME</textarea>
       </section>
     </main>
 
-    <script src="./art-text-presets.js?v=17"></script>
-    <script src="./art-text-fields.js?v=12"></script>
-    <script src="./art-text.js?v=75"></script>
+    <script src="./art-text-presets.js?v=22"></script>
+    <script src="./art-text-fields.js?v=13"></script>
+    <script src="./art-text.js?v=89"></script>
   </body>
 </html>
