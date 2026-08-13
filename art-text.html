@@ -71,6 +71,14 @@
                 <canvas width="224" height="224" aria-hidden="true"></canvas><span>PRISM MERCURY</span>
               </button>
             </div>
+            <div class="reflection-url-control reflection-library-url" data-materials="liquid vhs">
+              <label for="customReflectionUrlInput">CUSTOM REFLECTION URL</label>
+              <div>
+                <input id="customReflectionUrlInput" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… / data:image… / blob:…" />
+                <button id="applyReflectionUrlButton" type="button">APPLY</button>
+              </div>
+              <p id="customReflectionStatus" role="status" aria-live="polite"></p>
+            </div>
           </section>
 
           <section class="asset-library" aria-labelledby="assetLibraryTitle">
@@ -161,14 +169,6 @@ CHROME</textarea>
                 <option value="custom">CUSTOM URL…</option>
               </select>
             </label>
-            <div class="reflection-url-control" data-materials="liquid vhs">
-              <label for="customReflectionUrlInput">CUSTOM REFLECTION URL</label>
-              <div>
-                <input id="customReflectionUrlInput" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… / data:image… / blob:…" />
-                <button id="applyReflectionUrlButton" type="button">APPLY</button>
-              </div>
-              <p id="customReflectionStatus" role="status" aria-live="polite"></p>
-            </div>
             <label class="range-control" for="envCoverageInput" data-materials="liquid vhs">
               <span><b>ENV COVERAGE</b><output id="envCoverageValue">180%</output></span>
               <input id="envCoverageInput" type="range" min="100" max="240" value="180" step="5" />
