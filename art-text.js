@@ -1232,40 +1232,10 @@
 
     const boundsCanvas = ui.generatedAssetCanvases.get("bounds-lut");
     if (boundsCanvas) {
-      const context = boundsCanvas.getContext("2d", { alpha: false });
-      context.fillStyle = "#050407";
-      context.fillRect(0, 0, boundsCanvas.width, boundsCanvas.height);
-      context.strokeStyle = "rgba(183,166,255,.16)";
-      context.lineWidth = 1;
-      context.beginPath();
-      context.moveTo(0, Math.floor(boundsCanvas.height * 0.5) + 0.5);
-      context.lineTo(boundsCanvas.width, Math.floor(boundsCanvas.height * 0.5) + 0.5);
-      context.stroke();
-      state.glyphs.forEach((glyph) => {
-        const centerOffset = glyph.idByte * 4;
-        const sizeOffset = (256 + glyph.idByte) * 4;
-        const centerX = unpackPixels16(boundsPixels, centerOffset, 0, 1);
-        const centerY = unpackPixels16(boundsPixels, centerOffset, 2, 3);
-        const width = boundsPixels[sizeOffset] / 255;
-        const height = boundsPixels[sizeOffset + 1] / 255;
-        const x = ((glyph.idByte + 0.5) / 256) * boundsCanvas.width;
-        const topY = (0.08 + centerY * 0.34) * boundsCanvas.height;
-        const bottomY = (0.58 + height * 0.30) * boundsCanvas.height;
-        const color = idPreviewColor(glyph.idByte);
-        context.fillStyle = `rgb(${color[0]}, ${color[1]}, ${color[2]})`;
-        context.fillRect(Math.floor(x) - 2, topY - 3, 5, 6);
-        context.fillRect(Math.floor(x) - 2, bottomY - 3, 5, 6);
-        context.strokeStyle = `rgba(${color[0]}, ${color[1]}, ${color[2]}, .66)`;
-        context.beginPath();
-        context.moveTo(x, topY);
-        context.lineTo(x, bottomY);
-        context.stroke();
-        context.fillStyle = "rgba(255,255,255,.68)";
-        context.fillRect(x - Math.max(1, width * 9), bottomY + 7, Math.max(2, width * 18), 1);
-        context.fillRect(x + 7, bottomY - Math.max(1, height * 9), 1, Math.max(2, height * 18));
-        context.fillStyle = "rgba(255,255,255,.42)";
-        context.fillRect(centerX * boundsCanvas.width - 1, topY - 1, 2, 2);
-      });
+      boundsCanvas.width = 256;
+      boundsCanvas.height = 2;
+      const context = boundsCanvas.getContext("2d");
+      context.putImageData(new ImageData(new Uint8ClampedArray(boundsPixels), 256, 2), 0, 0);
     }
   }
 

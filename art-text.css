@@ -172,6 +172,9 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .asset-card { min-width: 0; margin: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 4px; background: #0a090d; }
 .asset-card-wide { grid-column: 1 / -1; }
 .asset-card canvas { display: block; width: 100%; aspect-ratio: 16 / 9; background: #050407; image-rendering: auto; }
+.asset-card canvas[data-generated-asset="bounds-lut"] {
+  image-rendering: pixelated;
+}
 .asset-card figcaption { display: flex; align-items: center; justify-content: space-between; gap: 4px; min-height: 27px; padding: 0 6px; border-top: 1px solid var(--line); font-family: var(--mono); }
 .asset-card figcaption b { overflow: hidden; color: var(--text); font-size: 9.5px; letter-spacing: 0.025em; text-overflow: ellipsis; white-space: nowrap; }
 .asset-card figcaption span { flex: 0 0 auto; color: var(--cyan); font-size: 8.5px; }
