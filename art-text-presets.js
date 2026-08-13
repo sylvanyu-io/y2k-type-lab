@@ -3,6 +3,39 @@
 
   const presets = [
     {
+      key: "vhs",
+      mode: 2,
+      label: "VHS//CHROME",
+      ariaLabel: "VHS 镀铬艺术字预览",
+      settings: {
+        tracking: 4,
+        edgeWidth: 6,
+        bodyCrown: 10,
+        faceCurve: 55,
+        reflection: 72,
+        colorField: 64,
+        roughness: 10,
+        baseColor: "#000000",
+        envCoverage: 160,
+        reflectionStyle: "rose",
+        customReflectionUrl: "",
+        reflectionOffsetX: 0,
+        reflectionOffsetY: 0,
+        liquidWarp: 5,
+        dotPitch: 7,
+        dotOutlineLayers: 0,
+        glitchStrength: 55,
+        perspectiveAngle: 0,
+        vhsScanlineSpacing: 8,
+        vhsScanlineStrength: 28,
+        extrusion: 13,
+        glow: 38,
+        sceneDetail: 82,
+        cyan: "#44f6ff",
+        pink: "#ff38cf",
+      },
+    },
+    {
       key: "dot",
       mode: 1,
       label: "DOT//GLITCH",
@@ -68,39 +101,6 @@
         pink: "#ff2bd6",
       },
     },
-    {
-      key: "vhs",
-      mode: 2,
-      label: "VHS//CHROME",
-      ariaLabel: "VHS 镀铬艺术字预览",
-      settings: {
-        tracking: 4,
-        edgeWidth: 6,
-        bodyCrown: 10,
-        faceCurve: 55,
-        reflection: 72,
-        colorField: 64,
-        roughness: 10,
-        baseColor: "#000000",
-        envCoverage: 160,
-        reflectionStyle: "rose",
-        customReflectionUrl: "",
-        reflectionOffsetX: 0,
-        reflectionOffsetY: 0,
-        liquidWarp: 5,
-        dotPitch: 7,
-        dotOutlineLayers: 0,
-        glitchStrength: 55,
-        perspectiveAngle: 0,
-        vhsScanlineSpacing: 8,
-        vhsScanlineStrength: 28,
-        extrusion: 13,
-        glow: 38,
-        sceneDetail: 82,
-        cyan: "#44f6ff",
-        pink: "#ff38cf",
-      },
-    },
   ];
 
   const byKey = Object.freeze(Object.fromEntries(
@@ -111,7 +111,7 @@
   ));
 
   window.ArtTextPresets = Object.freeze({
-    defaultKey: "liquid",
+    defaultKey: "vhs",
     order: Object.freeze(presets.map((preset) => preset.key)),
     byKey,
   });

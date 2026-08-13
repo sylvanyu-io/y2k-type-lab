@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-material="liquid">
+<html lang="zh-CN" data-material="vhs">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -36,17 +36,17 @@
           </div>
 
           <div class="surface-switcher" role="group" aria-label="材质预设">
+            <button class="surface-button is-active" type="button" data-material-preset="vhs" aria-pressed="true">
+              <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/vhs-chrome.webp?v=1" alt="" /></span>
+              <span class="surface-copy"><b>VHS</b><span>CHROME</span></span>
+            </button>
             <button class="surface-button" type="button" data-material-preset="dot" aria-pressed="false">
               <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/dot-glitch.webp?v=1" alt="" /></span>
               <span class="surface-copy"><b>DOT</b><span>GLITCH</span></span>
             </button>
-            <button class="surface-button is-active" type="button" data-material-preset="liquid" aria-pressed="true">
+            <button class="surface-button" type="button" data-material-preset="liquid" aria-pressed="false">
               <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/liquid-chrome.webp?v=1" alt="" /></span>
               <span class="surface-copy"><b>LIQUID</b><span>CHROME</span></span>
-            </button>
-            <button class="surface-button" type="button" data-material-preset="vhs" aria-pressed="false">
-              <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/vhs-chrome.webp?v=1" alt="" /></span>
-              <span class="surface-copy"><b>VHS</b><span>CHROME</span></span>
             </button>
           </div>
 
@@ -131,7 +131,7 @@
         <aside class="inspector" aria-label="艺术字参数">
           <div class="rail-title inspector-title">
             <span>02</span>
-            <div><strong>INSPECTOR</strong><small id="inspectorMaterialName">LIQUID//CHROME</small></div>
+            <div><strong>INSPECTOR</strong><small id="inspectorMaterialName">VHS//CHROME</small></div>
           </div>
 
           <section class="control-section">
@@ -264,7 +264,7 @@ CHROME</textarea>
       </section>
     </main>
 
-    <script src="./art-text-presets.js?v=28"></script>
+    <script src="./art-text-presets.js?v=29"></script>
     <script src="./art-text-fields.js?v=13"></script>
     <script src="./art-text.js?v=112"></script>
   </body>
