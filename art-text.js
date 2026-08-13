@@ -886,7 +886,8 @@
       // DOT owns an ID-gated magenta underprint; do not stack the generic
       // shifted SDF extrusion underneath it.
       float genericExtrusion = extrusion * (1.0 - step(0.5, uMaterialMode) * (1.0 - step(1.5, uMaterialMode)));
-      color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, genericExtrusion * 0.88);
+      float extrusionOpacity = mix(0.84, 0.88, step(1.5, uMaterialMode));
+      color = mix(color, vec3(0.18, 0.055, 0.22) + uPink * 0.08, genericExtrusion * extrusionOpacity);
       color += mix(uPink, uCyan, uv.x) * glow * 0.28;
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
         vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
