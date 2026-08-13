@@ -1238,11 +1238,13 @@
     }
 
     void main() {
-      float perspective = clamp(uPerspectiveAngle / 75.0, 0.0, 1.0);
+      float perspective = clamp(uPerspectiveAngle / 90.0, 0.0, 1.0);
       // The complete 1600x900 DOT bake is projected once here. vUv.y is zero
       // at the visual bottom, so the upper edge narrows while the bottom stays
       // anchored at full width.
-      float topScale = mix(1.0, 0.72, perspective);
+      // Preserve the original 0-75 degree response exactly, then allow the
+      // same linear taper to continue through the new 90 degree endpoint.
+      float topScale = mix(1.0, 0.664, perspective);
       float perspectiveRow = clamp((vUv.y - 0.05) / 0.90, 0.0, 1.0);
       float rowScale = mix(1.0, topScale, perspectiveRow);
       float sourceX = 0.5 + (vUv.x - 0.5) / max(rowScale, 0.01);
