@@ -73,7 +73,7 @@
         roughness: 10,
         baseColor: "#000000",
         envCoverage: 160,
-        reflectionStyle: "arctic",
+        reflectionStyle: "rose",
         customReflectionUrl: "",
         reflectionOffsetX: 0,
         reflectionOffsetY: 0,
