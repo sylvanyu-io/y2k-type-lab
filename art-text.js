@@ -736,8 +736,9 @@
       vec3 background = backgroundColor(uv);
 
       if (uDebugId > 0.5) {
-        vec3 debugColor = mix(vec3(0.025), idPalette(id), hasCell);
-        debugColor += vec3(sampleCoverage(uv) * 0.30);
+        float inkId = texture(uIdTexture, uv).g;
+        float coverage = sampleCoverage(uv);
+        vec3 debugColor = mix(vec3(0.008, 0.009, 0.014), idPalette(inkId), coverage);
         fragColor = vec4(debugColor, 1.0);
         return;
       }
@@ -1219,33 +1220,15 @@
       writeRgb(output, index, (x * 0.5 + 0.5) * 255, (y * 0.5 + 0.5) * 255, z * 255);
     });
     drawGeneratedAsset("glyph-id", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
-      const idByte = idPixels[sourceIndex];
+      const idByte = idPixels[sourceIndex + 1];
       if (idByte === 0) {
         writeRgb(output, index, 5, 4, 8);
         return;
       }
       const color = idPreviewColor(idByte);
       const coverage = shapePixels[sourceIndex + 2] / 255;
-      const strength = 0.20 + coverage * 0.80;
-      writeRgb(output, index, color[0] * strength, color[1] * strength, color[2] * strength);
+      writeRgb(output, index, color[0] * coverage, color[1] * coverage, color[2] * coverage);
     });
-
-    const idCanvasPreview = ui.generatedAssetCanvases.get("glyph-id");
-    if (idCanvasPreview) {
-      const context = idCanvasPreview.getContext("2d");
-      context.save();
-      context.strokeStyle = "rgba(255,255,255,.58)";
-      context.lineWidth = 1;
-      state.glyphs.forEach((glyph) => {
-        context.strokeRect(
-          (glyph.cellLeft / TEXTURE_WIDTH) * idCanvasPreview.width + 0.5,
-          (glyph.cellTop / TEXTURE_HEIGHT) * idCanvasPreview.height + 0.5,
-          ((glyph.cellRight - glyph.cellLeft) / TEXTURE_WIDTH) * idCanvasPreview.width - 1,
-          ((glyph.cellBottom - glyph.cellTop) / TEXTURE_HEIGHT) * idCanvasPreview.height - 1,
-        );
-      });
-      context.restore();
-    }
 
     const boundsCanvas = ui.generatedAssetCanvases.get("bounds-lut");
     if (boundsCanvas) {
@@ -2011,6 +1994,7 @@
     const idPixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
     for (let index = 0; index < idPixels.length; index += 4) {
       idPixels[index] = idSource[index];
+      idPixels[index + 1] = alphaPixels[index + 3] > 0 ? idSource[index] : 0;
       idPixels[index + 3] = 255;
     }
 
