@@ -6,8 +6,14 @@
   const SDF_SPREAD = 72;
   const SHADING_SDF_SPREAD = 24;
   const BODY_INFLATE = 3.5;
+  const FACE_CURVE_REFERENCE_CROWN = 16;
+  // BODY and FACE are independent height sources. Give each its own slope
+  // budget so one control cannot consume or amplify the other's response.
+  const BODY_MAX_SLOPE = 0.45;
+  const FACE_MAX_SLOPE = 0.30;
   const INF = 1e20;
   const DISPLAY_FONT = '"Arial Rounded MT Bold", "Yuanti SC", "Hiragino Maru Gothic ProN", "Avenir Next", "PingFang SC", sans-serif';
+  const DOT_DISPLAY_FONT = '"Arial Black", "Impact", "Arial Narrow Bold", "PingFang SC", sans-serif';
   const DEBUG_SURFACE = new URLSearchParams(window.location.search).get("debug") || "";
   const {
     createArtworkBodyHeight,
@@ -77,6 +83,8 @@
     edgeWidthValue: document.querySelector("#edgeWidthValue"),
     bodyCrownInput: document.querySelector("#bodyCrownInput"),
     bodyCrownValue: document.querySelector("#bodyCrownValue"),
+    faceCurveInput: document.querySelector("#faceCurveInput"),
+    faceCurveValue: document.querySelector("#faceCurveValue"),
     reflectionInput: document.querySelector("#reflectionInput"),
     reflectionValue: document.querySelector("#reflectionValue"),
     colorFieldInput: document.querySelector("#colorFieldInput"),
@@ -127,6 +135,10 @@
     return PRESETS[state.activePreset] || PRESETS[DEFAULT_PRESET_KEY];
   }
 
+  function activeDisplayFont() {
+    return activePreset().mode === 1 ? DOT_DISPLAY_FONT : DISPLAY_FONT;
+  }
+
   function syncPresetSelection() {
     const preset = activePreset();
     document.documentElement.dataset.material = preset.key;
@@ -163,8 +175,10 @@
     syncControls();
     syncPresetSelection();
     ui.materialAnnouncement.textContent = `已应用 ${preset.label}`;
-    setDebugView(false);
-    render();
+    state.debugId = false;
+    ui.materialViewButton.classList.add("is-active");
+    ui.idViewButton.classList.remove("is-active");
+    applyPresetBake();
     if (preset.mode !== 1) loadPresetReflection(key);
   }
   const sourceCanvas = document.createElement("canvas");
@@ -217,7 +231,6 @@
     uniform vec2 uTextureSize;
     uniform float uSpread;
     uniform float uEdgeWidth;
-    uniform float uBodyCrown;
     uniform float uReflection;
     uniform float uColorFieldStrength;
     uniform float uRoughness;
@@ -301,29 +314,11 @@
       );
     }
 
-    vec2 normalTap(vec2 uv) {
-      vec4 packedNormal = texture(uNormalTexture, uv);
-      vec4 bytes = floor(packedNormal * 255.0 + 0.5);
-      vec2 encoded = vec2(
-        (bytes.r * 256.0 + bytes.g) / 65535.0,
-        (bytes.b * 256.0 + bytes.a) / 65535.0
-      );
-      return (encoded * 2.0 - 1.0) * 1.25;
-    }
-
-    vec2 sampleEdgeGradient16(vec2 uv) {
-      vec2 pixel = uv * uTextureSize - 0.5;
-      vec2 base = floor(pixel);
-      vec2 fraction = fract(pixel);
-      vec2 uv00 = (base + vec2(0.5, 0.5)) / uTextureSize;
-      vec2 uv10 = (base + vec2(1.5, 0.5)) / uTextureSize;
-      vec2 uv01 = (base + vec2(0.5, 1.5)) / uTextureSize;
-      vec2 uv11 = (base + vec2(1.5, 1.5)) / uTextureSize;
-      return mix(
-        mix(normalTap(uv00), normalTap(uv10), fraction.x),
-        mix(normalTap(uv01), normalTap(uv11), fraction.x),
-        fraction.y
-      );
+    vec3 sampleNormalMap(vec2 uv) {
+      vec3 encoded = texture(uNormalTexture, uv).rgb * 2.0 - 1.0;
+      // Normal assets use the conventional +Y-up green channel. Material UVs
+      // use the canvas-oriented +Y-down space, so convert once after sampling.
+      return normalize(vec3(encoded.x, -encoded.y, max(encoded.z, 1.0 / 255.0)));
     }
 
     float sampleCoverage(vec2 uv) {
@@ -831,40 +826,14 @@
         return;
       ` : ""}
 
-      // The body crown and edge roll are intentionally separate. Body height
-      // comes from one artwork-wide blurred coverage field, so close glyphs
-      // share a continuous surface without inheriting the SDF medial axis.
-      float bodyStepPx = 5.0;
-      vec2 bodyStep = vec2(bodyStepPx) / uTextureSize;
       vec2 centerShape = sampleShapeData16(uv);
-      float bodyLeft = sampleShapeData16(uv - vec2(bodyStep.x, 0.0)).x;
-      float bodyRight = sampleShapeData16(uv + vec2(bodyStep.x, 0.0)).x;
-      float bodyTop = sampleShapeData16(uv - vec2(0.0, bodyStep.y)).x;
-      float bodyBottom = sampleShapeData16(uv + vec2(0.0, bodyStep.y)).x;
-      vec2 bodyGradient = vec2(bodyRight - bodyLeft, bodyBottom - bodyTop) / (bodyStepPx * 2.0);
-      // BODY HEIGHT is normalized; convert it to a virtual balloon height in
-      // source pixels. The previous 1x scale left the whole face nearly flat.
-      vec2 rawBodyNormal = -bodyGradient * uBodyCrown * 1.3;
-      float rawBodyLength = length(rawBodyNormal);
-      float bodySlope = 0.64 * (1.0 - exp(-rawBodyLength / 0.64));
-      vec2 bodyNormalXY = rawBodyNormal * bodySlope / max(rawBodyLength, 0.001);
-
-      vec2 edgeGradient = sampleEdgeGradient16(uv);
-      float edgeGradientLength = length(edgeGradient);
-      float edgeConfidence = smoothstep(0.08, 0.32, edgeGradientLength);
-      vec2 edgeDirection = edgeGradient / max(edgeGradientLength, 0.0001);
+      // The complete crown + continuous face curve + edge roll is baked into
+      // one normal texture. Runtime cost stays at one filtered normal lookup.
+      vec3 bakedNormal = sampleNormalMap(uv);
       ${DEBUG_SURFACE === "edge" ? `
-        fragColor = vec4(edgeGradient * 0.38 + 0.5, edgeConfidence, 1.0);
+        fragColor = vec4(bakedNormal * 0.5 + 0.5, 1.0);
         return;
       ` : ""}
-      float effectiveEdgeWidth = max(uEdgeWidth, aa * 1.5);
-      float edgeX = clamp(shadingSurfaceD / effectiveEdgeWidth, 0.0, 1.0);
-      float rawEdgeSlope = (1.0 - edgeX) / sqrt(max(2.0 * edgeX - edgeX * edgeX, 0.018));
-      float maxEdgeSlope = 2.4;
-      float edgeSlope = maxEdgeSlope * (1.0 - exp(-rawEdgeSlope / maxEdgeSlope));
-      float edgeMix = (1.0 - smoothstep(effectiveEdgeWidth * 0.62, effectiveEdgeWidth, shadingSurfaceD)) * edgeConfidence;
-      vec2 edgeNormalXY = -edgeDirection * edgeSlope;
-      vec2 normalXY = mix(bodyNormalXY, edgeNormalXY, edgeMix);
 
       vec2 artworkSize = max(uArtworkBounds.zw, vec2(1.0) / uTextureSize);
       vec2 artworkLocal = clamp(
@@ -887,9 +856,7 @@
       // never gates geometry. Inflated/AA edges blend smoothly back to the
       // artwork coordinate field instead of creating an owner-cell seam.
       vec2 materialLocal = mix(artworkLocal, glyphLocal, semanticWeight);
-      normalXY += materialLocal * vec2(0.0024, 0.0017) * uBodyCrown
-        * smoothstep(0.001, 0.08, centerShape.x);
-
+      vec2 normalXY = bakedNormal.xy / max(bakedNormal.z, 0.001);
       vec2 noiseUv = uv * vec2(1.35, 1.85) + vec2(2.7, -1.9);
       vec2 liquid = texture(uNoiseTexture, noiseUv).rg - 0.5;
       normalXY += liquid * uLiquidWarp;
@@ -1124,7 +1091,6 @@
     textureSize: gl.getUniformLocation(program, "uTextureSize"),
     spread: gl.getUniformLocation(program, "uSpread"),
     edgeWidth: gl.getUniformLocation(program, "uEdgeWidth"),
-    bodyCrown: gl.getUniformLocation(program, "uBodyCrown"),
     reflection: gl.getUniformLocation(program, "uReflection"),
     colorFieldStrength: gl.getUniformLocation(program, "uColorFieldStrength"),
     roughness: gl.getUniformLocation(program, "uRoughness"),
@@ -1181,7 +1147,7 @@
   const noiseTexture = createTexture(gl.TEXTURE3, gl.LINEAR, gl.REPEAT);
   const distanceTexture = createTexture(gl.TEXTURE4, gl.NEAREST);
   let colorFieldTexture = createTexture(gl.TEXTURE5, gl.LINEAR);
-  const normalTexture = createTexture(gl.TEXTURE6, gl.NEAREST);
+  const normalTexture = createTexture(gl.TEXTURE6, gl.LINEAR);
   const sceneTexture = createTexture(gl.TEXTURE7, gl.LINEAR);
   const sceneFramebuffer = gl.createFramebuffer();
   let sceneTargetWidth = 0;
@@ -1302,10 +1268,10 @@
       );
     });
     drawGeneratedAsset("normal", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
-      const x = (unpackPixels16(normalPixels, sourceIndex, 0, 1) * 2 - 1) * 1.25;
-      const y = (unpackPixels16(normalPixels, sourceIndex, 2, 3) * 2 - 1) * 1.25;
-      const z = Math.sqrt(Math.max(0, 1 - Math.min(1, x * x + y * y)));
-      writeRgb(output, index, (x * 0.5 + 0.5) * 255, (y * 0.5 + 0.5) * 255, z * 255);
+      const normalX = normalPixels[sourceIndex] / 255 * 2 - 1;
+      const normalY = normalPixels[sourceIndex + 1] / 255 * 2 - 1;
+      const normalZ = normalPixels[sourceIndex + 2] / 255 * 2 - 1;
+      writeRgb(output, index, (normalX * 0.5 + 0.5) * 255, (normalY * 0.5 + 0.5) * 255, normalZ * 255);
     });
     drawGeneratedAsset("glyph-id", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
       const idByte = idPixels[sourceIndex + 1];
@@ -1694,6 +1660,9 @@
     }
   }
 
+  let cachedNormalBake = null;
+  let bakedDisplayFont = "";
+  let bakedTracking = NaN;
   function buildNoiseTexture() {
     const size = 64;
     const pixels = createNoiseField(size, 8);
@@ -1726,7 +1695,7 @@
   }
 
   function measureLine(glyphs, fontSize) {
-    sourceContext.font = `900 ${fontSize}px ${DISPLAY_FONT}`;
+    sourceContext.font = `900 ${fontSize}px ${activeDisplayFont()}`;
     return glyphs.reduce(
       (total, glyph, index) => total + sourceContext.measureText(glyph).width + (index ? state.tracking : 0),
       0,
@@ -1735,7 +1704,7 @@
 
   function fitLayout(lines) {
     let fontSize = 620;
-    const maxWidth = TEXTURE_WIDTH * 0.90;
+    const maxWidth = TEXTURE_WIDTH * (activePreset().mode === 1 ? 0.96 : 0.90);
     const maxHeight = TEXTURE_HEIGHT * 0.78;
     while (fontSize > 80) {
       const widths = lines.map((line) => measureLine(line, fontSize));
@@ -1809,39 +1778,161 @@
     }
   }
 
-  function encodeSigned16(value, range) {
-    const normalized = Math.max(-1, Math.min(1, value / range));
-    const packed = Math.round((normalized * 0.5 + 0.5) * 65535);
-    return [packed >> 8, packed & 255];
-  }
-
   function encodeNormalized16(value) {
     const packed = Math.round(Math.max(0, Math.min(1, value)) * 65535);
     return [packed >> 8, packed & 255];
   }
 
-  function writeArtworkEdgeGradient(shadingField, normalPixels, width, height) {
+  function writeArtworkNormalMap(
+    bodyHeight,
+    faceHeight,
+    shadingField,
+    normalPixels,
+    width,
+    height,
+  ) {
     const sample = (x, y) => (
       x < 0 || x >= width || y < 0 || y >= height
         ? -SHADING_SDF_SPREAD
         : shadingField[y * width + x]
     );
+    const sampleHeight = (field, x, y) => (
+      x < 0 || x >= width || y < 0 || y >= height
+        ? 0
+        : field[y * width + x]
+    );
+    const sampleStep = 5;
+    const bodyScale = state.bodyCrown * 1.3;
+    // FACE CURVE uses its own fixed amplitude reference. BODY CROWN no longer
+    // multiplies it, so the controls remain independent normal sources.
+    const faceScale = state.faceCurve / 100
+      * FACE_CURVE_REFERENCE_CROWN * 1.3;
+    const edgeWidth = Math.max(state.edgeWidth, 3);
     for (let y = 0; y < height; y += 1) {
       for (let x = 0; x < width; x += 1) {
         const surfaceDistance = shadingField[y * width + x] + BODY_INFLATE;
-        if (surfaceDistance < -4 || surfaceDistance > 19) continue;
+        if (surfaceDistance < -4) continue;
 
-        const gradientX = (sample(x + 1, y) - sample(x - 1, y)) / 2;
-        const gradientY = (sample(x, y + 1) - sample(x, y - 1)) / 2;
-        const encodedX = encodeSigned16(gradientX, 1.25);
-        const encodedY = encodeSigned16(gradientY, 1.25);
+        const bodyGradientX = (
+          sampleHeight(bodyHeight, x + sampleStep, y)
+          - sampleHeight(bodyHeight, x - sampleStep, y)
+        ) / (sampleStep * 2);
+        const bodyGradientY = (
+          sampleHeight(bodyHeight, x, y + sampleStep)
+          - sampleHeight(bodyHeight, x, y - sampleStep)
+        ) / (sampleStep * 2);
+        const faceGradientX = (
+          sampleHeight(faceHeight, x + sampleStep, y)
+          - sampleHeight(faceHeight, x - sampleStep, y)
+        ) / (sampleStep * 2);
+        const faceGradientY = (
+          sampleHeight(faceHeight, x, y + sampleStep)
+          - sampleHeight(faceHeight, x, y - sampleStep)
+        ) / (sampleStep * 2);
+        const bodyRawX = -bodyGradientX * bodyScale;
+        const bodyRawY = -bodyGradientY * bodyScale;
+        const bodyRawLength = Math.hypot(bodyRawX, bodyRawY);
+        const bodySlope = BODY_MAX_SLOPE
+          * (1 - Math.exp(-bodyRawLength / BODY_MAX_SLOPE));
+        let normalX = bodyRawLength > 0.0001 ? bodyRawX * bodySlope / bodyRawLength : 0;
+        let normalY = bodyRawLength > 0.0001 ? bodyRawY * bodySlope / bodyRawLength : 0;
+        const faceRawX = -faceGradientX * faceScale;
+        const faceRawY = -faceGradientY * faceScale;
+        const faceRawLength = Math.hypot(faceRawX, faceRawY);
+        const faceSlope = FACE_MAX_SLOPE
+          * (1 - Math.exp(-faceRawLength / FACE_MAX_SLOPE));
+        if (faceRawLength > 0.0001) {
+          normalX += faceRawX * faceSlope / faceRawLength;
+          normalY += faceRawY * faceSlope / faceRawLength;
+        }
+
+        const edgeGradientX = (sample(x + 1, y) - sample(x - 1, y)) / 2;
+        const edgeGradientY = (sample(x, y + 1) - sample(x, y - 1)) / 2;
+        const edgeGradientLength = Math.hypot(edgeGradientX, edgeGradientY);
+        const confidenceT = Math.max(0, Math.min(1, (edgeGradientLength - 0.08) / 0.24));
+        const edgeConfidence = confidenceT * confidenceT * (3 - 2 * confidenceT);
+        if (edgeConfidence > 0.0001) {
+          const edgeX = Math.max(0, Math.min(1, surfaceDistance / edgeWidth));
+          const rawEdgeSlope = (1 - edgeX) / Math.sqrt(Math.max(2 * edgeX - edgeX * edgeX, 0.018));
+          const edgeSlope = 2.4 * (1 - Math.exp(-rawEdgeSlope / 2.4));
+          const edgeFadeT = Math.max(0, Math.min(1, (edgeX - 0.62) / 0.38));
+          const edgeFadeSmooth = edgeFadeT * edgeFadeT * (3 - 2 * edgeFadeT);
+          const edgeWeight = (1 - edgeFadeSmooth) * edgeConfidence;
+          const edgeNormalX = -edgeGradientX / edgeGradientLength * edgeSlope;
+          const edgeNormalY = -edgeGradientY / edgeGradientLength * edgeSlope;
+          // Add the bevel gradient to the body surface instead of replacing the
+          // body normal inside a narrow handoff band. Replacement made strong
+          // crowns dip and rise at the join, exposing a reflection boundary.
+          normalX += edgeNormalX * edgeWeight;
+          normalY += edgeNormalY * edgeWeight;
+        }
+
+        const inverseLength = 1 / Math.sqrt(normalX * normalX + normalY * normalY + 1);
         const output = (y * width + x) * 4;
-        normalPixels[output] = encodedX[0];
-        normalPixels[output + 1] = encodedX[1];
-        normalPixels[output + 2] = encodedY[0];
-        normalPixels[output + 3] = encodedY[1];
+        normalPixels[output] = Math.round((normalX * inverseLength * 0.5 + 0.5) * 255);
+        // Store a conventional +Y-up tangent normal even though the CPU fields
+        // are indexed in canvas coordinates where rows increase downward.
+        normalPixels[output + 1] = Math.round((-normalY * inverseLength * 0.5 + 0.5) * 255);
+        normalPixels[output + 2] = Math.round((inverseLength * 0.5 + 0.5) * 255);
+        normalPixels[output + 3] = 255;
       }
     }
+  }
+
+  function uploadNormalMap(normalPixels) {
+    drawGeneratedAsset("normal", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
+      const normalX = normalPixels[sourceIndex] / 255 * 2 - 1;
+      const normalY = normalPixels[sourceIndex + 1] / 255 * 2 - 1;
+      const normalZ = normalPixels[sourceIndex + 2] / 255 * 2 - 1;
+      writeRgb(
+        output,
+        index,
+        (normalX * 0.5 + 0.5) * 255,
+        (normalY * 0.5 + 0.5) * 255,
+        normalZ * 255,
+      );
+    });
+    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, normalTexture);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.RGBA,
+      TEXTURE_WIDTH,
+      TEXTURE_HEIGHT,
+      0,
+      gl.RGBA,
+      gl.UNSIGNED_BYTE,
+      normalPixels,
+    );
+  }
+
+  function rebuildNormalTexture() {
+    if (!cachedNormalBake) {
+      rebuildTextures();
+      return;
+    }
+    const startedAt = performance.now();
+    const normalPixels = new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT * 4);
+    for (let index = 0; index < normalPixels.length; index += 4) {
+      normalPixels[index] = 128;
+      normalPixels[index + 1] = 128;
+      normalPixels[index + 2] = 255;
+      normalPixels[index + 3] = 255;
+    }
+    writeArtworkNormalMap(
+      cachedNormalBake.smoothHeight,
+      cachedNormalBake.faceHeight,
+      cachedNormalBake.shadingField,
+      normalPixels,
+      TEXTURE_WIDTH,
+      TEXTURE_HEIGHT,
+    );
+    uploadNormalMap(normalPixels);
+    ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
+    ui.renderStatus.textContent = "NORMAL BAKE READY";
+    render();
   }
 
   function createSemanticIdPixels(alphaPixels, glyphs) {
@@ -1917,6 +2008,9 @@
   }
   function rebuildTextures() {
     const startedAt = performance.now();
+    cachedNormalBake = null;
+    bakedDisplayFont = activeDisplayFont();
+    bakedTracking = state.tracking;
     ui.renderStatus.textContent = "BUILDING SDF";
     const rawLines = state.text.replace(/\r/g, "").split("\n").slice(0, 3);
     const lines = rawLines.map((line) => segmentText(line).slice(0, 18));
@@ -1926,7 +2020,7 @@
 
     sourceContext.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     idContext.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-    sourceContext.font = `900 ${layout.fontSize}px ${DISPLAY_FONT}`;
+    sourceContext.font = `900 ${layout.fontSize}px ${bakedDisplayFont}`;
     sourceContext.textBaseline = "alphabetic";
     sourceContext.fillStyle = "#ffffff";
 
@@ -1995,9 +2089,9 @@
       shapePixels[index + 2] = alphaPixels[index + 3];
       shapePixels[index + 3] = 255;
       normalPixels[index] = 128;
-      normalPixels[index + 1] = 0;
-      normalPixels[index + 2] = 128;
-      normalPixels[index + 3] = 0;
+      normalPixels[index + 1] = 128;
+      normalPixels[index + 2] = 255;
+      normalPixels[index + 3] = 255;
     }
     state.artworkBounds = artworkRight > artworkLeft && artworkBottom > artworkTop
       ? [
@@ -2049,14 +2143,31 @@
         height,
         bodySigma,
       );
+      // A broader artwork-wide pressure field supplies the face curvature.
+      // Unlike a nearest-edge / propagated-radius tube, this scalar field is
+      // smooth through medial axes and multi-stroke joins, so Y/K/M junctions
+      // cannot bake a skeleton-shaped crease into the normal map.
+      const faceSigma = bodySigma * 2.25;
+      const faceHeight = createArtworkBodyHeight(
+        alphaPixels,
+        width,
+        height,
+        faceSigma,
+      );
       const shadingField = createArtworkShadingDistance(
         signedField,
         width,
         height,
         SHADING_SDF_SPREAD,
       );
-      writeArtworkEdgeGradient(shadingField, normalPixels, width, height);
-
+      writeArtworkNormalMap(
+        smoothHeight,
+        faceHeight,
+        shadingField,
+        normalPixels,
+        width,
+        height,
+      );
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
           const localIndex = y * width + x;
@@ -2078,6 +2189,11 @@
           shapePixels[outputIndex + 1] = bodyHeight16 & 255;
         }
       }
+      cachedNormalBake = {
+        smoothHeight,
+        faceHeight,
+        shadingField,
+      };
     }
 
     updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels);
@@ -2196,7 +2312,6 @@
     gl.uniform2f(locations.textureSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     gl.uniform1f(locations.spread, SDF_SPREAD);
     gl.uniform1f(locations.edgeWidth, state.edgeWidth);
-    gl.uniform1f(locations.bodyCrown, state.bodyCrown);
     gl.uniform1f(locations.reflection, state.reflection / 100);
     gl.uniform1f(locations.colorFieldStrength, state.colorField / 100);
     gl.uniform1f(locations.roughness, state.roughness / 100);
@@ -2243,10 +2358,24 @@
   }
 
   let rebuildTimer = 0;
+  let normalBakeTimer = 0;
+  let geometryRebuildPending = false;
   function scheduleRebuild() {
     window.clearTimeout(rebuildTimer);
+    window.clearTimeout(normalBakeTimer);
     ui.renderStatus.textContent = "WAITING FOR INPUT";
-    rebuildTimer = window.setTimeout(rebuildTextures, 140);
+    geometryRebuildPending = true;
+    rebuildTimer = window.setTimeout(() => {
+      geometryRebuildPending = false;
+      rebuildTextures();
+    }, 140);
+  }
+
+  function scheduleNormalBake() {
+    if (geometryRebuildPending) return;
+    window.clearTimeout(normalBakeTimer);
+    ui.renderStatus.textContent = "WAITING FOR NORMAL BAKE";
+    normalBakeTimer = window.setTimeout(rebuildNormalTexture, 80);
   }
 
   function setDebugView(debugId) {
@@ -2256,12 +2385,26 @@
     render();
   }
 
+  function applyPresetBake() {
+    if (bakedDisplayFont !== activeDisplayFont() || bakedTracking !== state.tracking) {
+      scheduleRebuild();
+      return;
+    }
+    if (activePreset().mode === 1) {
+      window.clearTimeout(normalBakeTimer);
+      render();
+      return;
+    }
+    scheduleNormalBake();
+  }
+
   function syncControls() {
     ui.textInput.value = state.text;
     ui.trackingInput.value = String(state.tracking);
     ui.lineHeightInput.value = String(state.lineHeight);
     ui.edgeWidthInput.value = String(state.edgeWidth);
     ui.bodyCrownInput.value = String(state.bodyCrown);
+    ui.faceCurveInput.value = String(state.faceCurve);
     ui.reflectionInput.value = String(state.reflection);
     ui.colorFieldInput.value = String(state.colorField);
     ui.roughnessInput.value = String(state.roughness);
@@ -2287,6 +2430,7 @@
     ui.lineHeightValue.value = `${state.lineHeight.toFixed(2)}×`;
     ui.edgeWidthValue.value = `${state.edgeWidth} PX`;
     ui.bodyCrownValue.value = String(state.bodyCrown);
+    ui.faceCurveValue.value = `${state.faceCurve}%`;
     ui.reflectionValue.value = `${state.reflection}%`;
     ui.colorFieldValue.value = `${state.colorField}%`;
     ui.roughnessValue.value = `${state.roughness}%`;
@@ -2309,7 +2453,7 @@
     scheduleRebuild();
   });
   ui.trackingInput.addEventListener("input", (event) => {
-    state.tracking = Number(event.currentTarget.value);
+    writePresetSetting("tracking", Number(event.currentTarget.value));
     ui.trackingValue.value = `${state.tracking} PX`;
     scheduleRebuild();
   });
@@ -2318,9 +2462,11 @@
     ui.lineHeightValue.value = `${state.lineHeight.toFixed(2)}×`;
     scheduleRebuild();
   });
+  const normalBakeKeys = new Set(["edgeWidth", "bodyCrown", "faceCurve"]);
   [
     [ui.edgeWidthInput, "edgeWidth", ui.edgeWidthValue, (value) => `${value} PX`],
     [ui.bodyCrownInput, "bodyCrown", ui.bodyCrownValue, (value) => String(value)],
+    [ui.faceCurveInput, "faceCurve", ui.faceCurveValue, (value) => `${value}%`],
     [ui.reflectionInput, "reflection", ui.reflectionValue, (value) => `${value}%`],
     [ui.colorFieldInput, "colorField", ui.colorFieldValue, (value) => `${value}%`],
     [ui.roughnessInput, "roughness", ui.roughnessValue, (value) => `${value}%`],
@@ -2340,7 +2486,8 @@
     input.addEventListener("input", (event) => {
       writePresetSetting(key, Number(event.currentTarget.value));
       output.value = format(state[key]);
-      render();
+      if (normalBakeKeys.has(key)) scheduleNormalBake();
+      else render();
     });
   });
   ui.reflectionStyleSelect.addEventListener("change", (event) => {
@@ -2380,7 +2527,10 @@
     Object.assign(state, settingsByPreset[state.activePreset], { debugId: false });
     syncControls();
     syncPresetSelection();
-    setDebugView(false);
+    state.debugId = false;
+    ui.materialViewButton.classList.add("is-active");
+    ui.idViewButton.classList.remove("is-active");
+    applyPresetBake();
     if (activePreset().mode !== 1) loadPresetReflection(state.activePreset);
   });
   window.addEventListener("resize", render, { passive: true });

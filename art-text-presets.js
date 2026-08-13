@@ -8,8 +8,10 @@
       label: "DOT//GLITCH",
       ariaLabel: "点阵故障艺术字预览",
       settings: {
+        tracking: -8,
         edgeWidth: 4,
         bodyCrown: 8,
+        faceCurve: 0,
         reflection: 34,
         colorField: 76,
         roughness: 0,
@@ -38,8 +40,10 @@
       label: "LIQUID//CHROME",
       ariaLabel: "液态铬艺术字预览",
       settings: {
+        tracking: 4,
         edgeWidth: 8,
         bodyCrown: 16,
+        faceCurve: 70,
         reflection: 100,
         colorField: 62,
         roughness: 0,
@@ -68,8 +72,10 @@
       label: "VHS//CHROME",
       ariaLabel: "VHS 镀铬艺术字预览",
       settings: {
+        tracking: 4,
         edgeWidth: 6,
         bodyCrown: 10,
+        faceCurve: 55,
         reflection: 72,
         colorField: 64,
         roughness: 10,
