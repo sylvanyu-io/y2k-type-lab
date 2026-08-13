@@ -396,6 +396,18 @@
       );
     }
 
+    vec3 gradeLiquidChrome(vec3 color) {
+      vec3 lumaWeights = vec3(0.2126, 0.7152, 0.0722);
+      float luma = dot(color, lumaWeights);
+      float midtoneMask = 4.0 * luma * (1.0 - luma);
+      float targetLuma = clamp(
+        luma + (luma - 0.5) * 0.10 * midtoneMask,
+        0.0,
+        1.0
+      );
+      return clamp(targetLuma + (color - luma) * 1.10, 0.0, 1.0);
+    }
+
     vec2 colorFieldUv(vec3 direction) {
       direction = normalize(direction);
       return vec2(
@@ -749,6 +761,10 @@
       float aa = edgeAA(surfaceD);
       float fill = smoothstep(-aa, aa, surfaceD);
       float glow = exp(-max(-surfaceD, 0.0) / 22.0) * (1.0 - fill) * uGlow;
+      if (uMaterialMode < 0.5) {
+        float liquidNear = exp(-max(-surfaceD, 0.0) / 14.0) * (1.0 - fill);
+        background *= 1.0 - liquidNear * 0.045;
+      }
       ${DEBUG_SURFACE === "fill" ? `
         fragColor = vec4(vec3(fill), 1.0);
         return;
@@ -850,6 +866,9 @@
       chromeLinear += srgbToLinear(edgeTint) * fresnel * mix(0.12, 0.56, uReflection);
       chromeLinear *= 0.94 + normal.z * 0.08;
       vec3 chrome = linearToSrgb(acesApprox(chromeLinear * 0.98));
+      if (uMaterialMode < 0.5) {
+        chrome = gradeLiquidChrome(chrome);
+      }
 
       vec2 extrusionOffset = vec2(-0.68, -1.0) * uExtrusion / uTextureSize;
       float backD = signedDistance(uv + extrusionOffset) + 3.5;
@@ -891,6 +910,13 @@
         fragColor = vec4(color, 1.0);
         return;
       }
+      float liquidSpecular = smoothstep(
+        0.72,
+        0.92,
+        dot(chrome, vec3(0.2126, 0.7152, 0.0722))
+      );
+      float liquidHalo = exp(-max(-surfaceD, 0.0) / 5.0) * (1.0 - fill);
+      color += mix(chrome, vec3(1.0), 0.12) * liquidSpecular * liquidHalo * 0.075;
       color = mix(color, chrome, fill);
       fragColor = vec4(color, 1.0);
     }
