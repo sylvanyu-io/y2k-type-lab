@@ -166,7 +166,7 @@
   idCanvas.height = TEXTURE_HEIGHT;
   const idContext = idCanvas.getContext("2d", { alpha: true });
 
-  const gl = ui.canvas.getContext("webgl", {
+  const gl = ui.canvas.getContext("webgl2", {
     alpha: false,
     antialias: false,
     depth: false,
@@ -177,27 +177,25 @@
 
   if (!gl) {
     ui.renderError.hidden = false;
-    ui.renderError.textContent = "WEBGL CONTEXT UNAVAILABLE";
-    ui.gpuStatus.textContent = "WEBGL UNAVAILABLE";
+    ui.renderError.textContent = "WEBGL 2 CONTEXT UNAVAILABLE";
+    ui.gpuStatus.textContent = "WEBGL 2 UNAVAILABLE";
     return;
   }
 
-  const standardDerivatives = gl.getExtension("OES_standard_derivatives");
-
-  const vertexShaderSource = `
-    attribute vec2 aPosition;
-    varying vec2 vUv;
+  const vertexShaderSource = `#version 300 es
+    layout(location = 0) in vec2 aPosition;
+    out vec2 vUv;
     void main() {
       vUv = aPosition * 0.5 + 0.5;
       gl_Position = vec4(aPosition, 0.0, 1.0);
     }
   `;
 
-  const fragmentShaderSource = `
-    ${standardDerivatives ? "#extension GL_OES_standard_derivatives : enable" : ""}
+  const fragmentShaderSource = `#version 300 es
     precision highp float;
 
-    varying vec2 vUv;
+    in vec2 vUv;
+    layout(location = 0) out vec4 fragColor;
     uniform sampler2D uShapeTexture;
     uniform sampler2D uDistanceTexture;
     uniform sampler2D uIdTexture;
@@ -232,7 +230,7 @@
     }
 
     vec2 distanceTap(vec2 uv) {
-      vec4 surfaceTexel = texture2D(uDistanceTexture, uv);
+      vec4 surfaceTexel = texture(uDistanceTexture, uv);
       vec4 distanceBytes = floor(surfaceTexel * 255.0 + 0.5);
       return vec2(
         (distanceBytes.r * 256.0 + distanceBytes.g) / 65535.0,
@@ -256,7 +254,7 @@
     }
 
     vec2 shapeTap(vec2 uv) {
-      vec4 packedShape = texture2D(uShapeTexture, uv);
+      vec4 packedShape = texture(uShapeTexture, uv);
       vec2 heightBytes = floor(packedShape.rg * 255.0 + 0.5);
       float bodyHeight = (heightBytes.x * 256.0 + heightBytes.y) / 65535.0;
       return vec2(bodyHeight, packedShape.b);
@@ -278,7 +276,7 @@
     }
 
     vec2 normalTap(vec2 uv) {
-      vec4 packedNormal = texture2D(uNormalTexture, uv);
+      vec4 packedNormal = texture(uNormalTexture, uv);
       vec4 bytes = floor(packedNormal * 255.0 + 0.5);
       vec2 encoded = vec2(
         (bytes.r * 256.0 + bytes.g) / 65535.0,
@@ -309,8 +307,8 @@
     vec4 boundsForId(float id) {
       float idByte = floor(id * 255.0 + 0.5);
       float x = (idByte + 0.5) / 256.0;
-      vec4 centerBytes = texture2D(uBoundsTexture, vec2(x, 0.25));
-      vec4 sizeSeed = texture2D(uBoundsTexture, vec2(x, 0.75));
+      vec4 centerBytes = texture(uBoundsTexture, vec2(x, 0.25));
+      vec4 sizeSeed = texture(uBoundsTexture, vec2(x, 0.75));
       return vec4(
         unpack16(centerBytes.rg),
         unpack16(centerBytes.ba),
@@ -331,7 +329,7 @@
     }
 
     float sameGlyphAt(vec2 uv, float expectedId) {
-      float sampledId = texture2D(uIdTexture, uv).r;
+      float sampledId = texture(uIdTexture, uv).r;
       float sameId = 1.0 - step(0.5 / 255.0, abs(sampledId - expectedId));
       return insideTexture(uv) * sameId;
     }
@@ -441,7 +439,7 @@
     }
 
     float edgeAA(float value) {
-      ${standardDerivatives ? "return max(2.1, fwidth(value) * 1.35);" : "return 2.4;"}
+      return max(2.1, fwidth(value) * 1.35);
     }
 
     vec3 idPalette(float id) {
@@ -477,7 +475,7 @@
         float rightBeam = band(uv.x - uv.y * 0.18, 0.81, 0.060);
         base += uCyan * leftBeam * 0.075 * uSceneDetail;
         base += uPink * rightBeam * 0.085 * uSceneDetail;
-        float noise = texture2D(uNoiseTexture, uv * vec2(5.0, 2.8125)).b - 0.5;
+        float noise = texture(uNoiseTexture, uv * vec2(5.0, 2.8125)).b - 0.5;
         base += vec3(noise * 0.030 * uSceneDetail);
         float horizon = exp(-260.0 * abs(uv.y - 0.76));
         base += mix(uPink, uCyan, uv.x) * horizon * 0.16 * uSceneDetail;
@@ -521,9 +519,9 @@
       color += mix(uPink, vec3(1.0), uv.x) * floorLine * 0.10 * uSceneDetail;
       vec2 floorPoint = (uv - vec2(0.5, 0.72)) * vec2(2.1, 11.0);
       color -= vec3(0.11, 0.045, 0.13) * exp(-dot(floorPoint, floorPoint)) * (0.75 + uSceneDetail * 0.25);
-      float grain = texture2D(uNoiseTexture, uv * vec2(4.0, 2.25)).b - 0.5;
+      float grain = texture(uNoiseTexture, uv * vec2(4.0, 2.25)).b - 0.5;
       color += vec3(grain * 0.012 * uSceneDetail);
-      float vignette = smoothstep(0.86, 0.24, length(centered));
+      float vignette = 1.0 - smoothstep(0.24, 0.86, length(centered));
       return color * mix(0.88, 1.04, vignette);
     }
 
@@ -655,14 +653,14 @@
 
     void main() {
       vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
-      float id = texture2D(uIdTexture, uv).r;
+      float id = texture(uIdTexture, uv).r;
       float hasCell = step(0.002, id);
       vec3 background = backgroundColor(uv);
 
       if (uDebugId > 0.5) {
         vec3 debugColor = mix(vec3(0.025), idPalette(id), hasCell);
         debugColor += vec3(sampleCoverage(uv) * 0.30);
-        gl_FragColor = vec4(debugColor, 1.0);
+        fragColor = vec4(debugColor, 1.0);
         return;
       }
 
@@ -673,7 +671,8 @@
         float reflectedAlpha = sampleCoverage(reflectedUv - blurStep) * 0.25;
         reflectedAlpha += sampleCoverage(reflectedUv) * 0.50;
         reflectedAlpha += sampleCoverage(reflectedUv + blurStep) * 0.25;
-        float reflectionFade = exp(-(uv.y - 0.78) * 11.0) * smoothstep(0.98, 0.78, uv.y);
+        float reflectionFade = exp(-(uv.y - 0.78) * 11.0)
+          * (1.0 - smoothstep(0.78, 0.98, uv.y));
         vec3 reflectedColor = mix(uPink * 0.58, uCyan * 0.34 + vec3(0.38), uv.x);
         background = mix(background, reflectedColor, reflectedAlpha * reflectionFade * 0.16 * uSceneDetail);
       }
@@ -685,12 +684,12 @@
       float fill = smoothstep(-aa, aa, surfaceD);
       float glow = exp(-max(-surfaceD, 0.0) / 22.0) * (1.0 - fill) * uGlow;
       ${DEBUG_SURFACE === "fill" ? `
-        gl_FragColor = vec4(vec3(fill), 1.0);
+        fragColor = vec4(vec3(fill), 1.0);
         return;
       ` : ""}
       ${DEBUG_SURFACE === "shading" ? `
         float shadingRamp = clamp(shadingSurfaceD / max(uEdgeWidth, 0.001), 0.0, 1.0);
-        gl_FragColor = vec4(vec3(shadingRamp), 1.0);
+        fragColor = vec4(vec3(shadingRamp), 1.0);
         return;
       ` : ""}
 
@@ -717,7 +716,7 @@
       float edgeConfidence = smoothstep(0.08, 0.32, edgeGradientLength);
       vec2 edgeDirection = edgeGradient / max(edgeGradientLength, 0.0001);
       ${DEBUG_SURFACE === "edge" ? `
-        gl_FragColor = vec4(edgeGradient * 0.38 + 0.5, edgeConfidence, 1.0);
+        fragColor = vec4(edgeGradient * 0.38 + 0.5, edgeConfidence, 1.0);
         return;
       ` : ""}
       float effectiveEdgeWidth = max(uEdgeWidth, aa * 1.5);
@@ -737,11 +736,11 @@
       normalXY += glyphLocal * vec2(0.0024, 0.0017) * uBodyCrown * hasCell;
 
       vec2 noiseUv = uv * vec2(1.35, 1.85) + vec2(2.7, -1.9);
-      vec2 liquid = texture2D(uNoiseTexture, noiseUv).rg - 0.5;
+      vec2 liquid = texture(uNoiseTexture, noiseUv).rg - 0.5;
       normalXY += liquid * uLiquidWarp;
       vec3 normal = normalize(vec3(normalXY, 1.0));
       ${DEBUG_SURFACE === "normal" ? `
-        gl_FragColor = vec4(normal * 0.5 + 0.5, 1.0);
+        fragColor = vec4(normal * 0.5 + 0.5, 1.0);
         return;
       ` : ""}
 
@@ -766,7 +765,7 @@
       // The reflection field owns the detail. Roughness only selects a softer
       // mip level, so it never wrinkles the glyph normal or dirties a clear
       // mirror at zero.
-      vec4 fieldSample = texture2D(uColorFieldTexture, fieldUv, uRoughness * 5.5);
+      vec4 fieldSample = texture(uColorFieldTexture, fieldUv, uRoughness * 5.5);
       vec3 sampledField = srgbToLinear(fieldSample.rgb);
       float sampledLuma = dot(sampledField, vec3(0.2126, 0.7152, 0.0722));
       sampledField = max(vec3(0.0), mix(vec3(sampledLuma), sampledField, 1.58));
@@ -808,7 +807,7 @@
         vec2 localPx = (uv - glyphBounds.xy) * uTextureSize;
         vec4 dotMaterial = dotGlitchMaterial(uv, id, localPx, aa);
         color = color * (1.0 - dotMaterial.a) + dotMaterial.rgb;
-        gl_FragColor = vec4(color, 1.0);
+        fragColor = vec4(color, 1.0);
         return;
       }
       if (uMaterialMode > 1.5) {
@@ -823,19 +822,19 @@
           chrome
         );
         color = color * (1.0 - vhsMaterial.a) + vhsMaterial.rgb;
-        gl_FragColor = vec4(color, 1.0);
+        fragColor = vec4(color, 1.0);
         return;
       }
       color = mix(color, chrome, fill);
-      gl_FragColor = vec4(color, 1.0);
+      fragColor = vec4(color, 1.0);
     }
   `;
 
-  const crtFragmentShaderSource = `
-    ${standardDerivatives ? "#extension GL_OES_standard_derivatives : enable" : ""}
+  const crtFragmentShaderSource = `#version 300 es
     precision highp float;
 
-    varying vec2 vUv;
+    in vec2 vUv;
+    layout(location = 0) out vec4 fragColor;
     uniform sampler2D uSceneTexture;
     uniform vec2 uSceneSize;
     uniform float uScanlineSpacing;
@@ -854,12 +853,12 @@
     }
 
     vec3 highlightAt(vec2 uv) {
-      vec3 color = toLinear(texture2D(uSceneTexture, uv).rgb);
+      vec3 color = toLinear(texture(uSceneTexture, uv).rgb);
       return color * smoothstep(0.22, 0.72, luma(color));
     }
 
     void main() {
-      vec3 scene = toLinear(texture2D(uSceneTexture, vUv).rgb);
+      vec3 scene = toLinear(texture(uSceneTexture, vUv).rgb);
       float brightness = luma(scene);
       float sourceY = vUv.y * uSceneSize.y;
       float pitch = max(5.0, uScanlineSpacing);
@@ -892,7 +891,7 @@
       vec2 centered = (vUv - 0.5) * vec2(1.0, 0.86);
       float edgeFade = 1.0 - smoothstep(0.22, 0.60, length(centered));
       color *= mix(0.86, 1.0, edgeFade);
-      gl_FragColor = vec4(toSrgb(color), 1.0);
+      fragColor = vec4(toSrgb(color), 1.0);
     }
   `;
 
@@ -2230,7 +2229,7 @@
   const renderer = rendererInfo
     ? gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL)
     : gl.getParameter(gl.RENDERER);
-  ui.gpuStatus.textContent = `WEBGL 1 · ${renderer}`;
+  ui.gpuStatus.textContent = `WEBGL 2 · ${renderer}`;
   buildNoiseTexture();
   buildReflectionGallery().catch((error) => {
     ui.renderError.hidden = false;
