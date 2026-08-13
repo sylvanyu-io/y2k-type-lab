@@ -106,6 +106,8 @@
     liquidWarpValue: document.querySelector("#liquidWarpValue"),
     dotPitchInput: document.querySelector("#dotPitchInput"),
     dotPitchValue: document.querySelector("#dotPitchValue"),
+    dotOutlineLayersInput: document.querySelector("#dotOutlineLayersInput"),
+    dotOutlineLayersValue: document.querySelector("#dotOutlineLayersValue"),
     perspectiveAngleInput: document.querySelector("#perspectiveAngleInput"),
     perspectiveAngleValue: document.querySelector("#perspectiveAngleValue"),
     glitchStrengthInput: document.querySelector("#glitchStrengthInput"),
@@ -239,8 +241,8 @@
     uniform vec2 uReflectionOffset;
     uniform float uLiquidWarp;
     uniform float uDotPitch;
+    uniform float uDotOutlineLayers;
     uniform float uGlitchStrength;
-    uniform float uPerspectiveAngle;
     uniform vec4 uArtworkBounds;
     uniform float uExtrusion;
     uniform float uGlow;
@@ -451,15 +453,16 @@
     vec3 backgroundColor(vec2 uv) {
       vec2 centered = uv - 0.5;
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
-        vec3 base = mix(vec3(0.002, 0.008, 0.020), vec3(0.035, 0.002, 0.060), uv.y);
+        vec3 base = mix(vec3(0.001, 0.004, 0.012), vec3(0.007, 0.001, 0.016), uv.y);
         float cyanHalo = exp(-dot((uv - vec2(0.24, 0.38)) * vec2(1.3, 1.8), (uv - vec2(0.24, 0.38)) * vec2(1.3, 1.8)) * 5.0);
         float pinkHalo = exp(-dot((uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7), (uv - vec2(0.78, 0.64)) * vec2(1.5, 1.7)) * 6.0);
-        base += uCyan * cyanHalo * 0.045 * uSceneDetail;
-        base += uPink * pinkHalo * 0.055 * uSceneDetail;
+        base += uCyan * cyanHalo * 0.012 * uSceneDetail;
+        base += uPink * pinkHalo * 0.016 * uSceneDetail;
         float gridX = exp(-1400.0 * abs(fract(uv.x * 16.0) - 0.5));
         float gridY = exp(-1400.0 * abs(fract(uv.y * 9.0) - 0.5));
-        base += vec3(0.08, 0.13, 0.19) * (gridX + gridY) * 0.18 * uSceneDetail;
-        return base;
+        base += vec3(0.025, 0.045, 0.085) * (gridX + gridY) * 0.08 * uSceneDetail;
+        float vignette = 1.0 - smoothstep(0.22, 0.72, length(centered * vec2(0.82, 1.0)));
+        return base * mix(0.68, 1.0, vignette);
       }
       if (uMaterialMode > 1.5) {
         vec3 top = vec3(0.10, 0.12, 0.34);
@@ -523,213 +526,359 @@
       return color * mix(0.88, 1.04, vignette);
     }
 
-    vec2 dotPerspectiveSourceUv(vec2 destinationUv, float depthAmount) {
-      vec2 artworkSizePx = max(uArtworkBounds.zw * uTextureSize, vec2(1.0));
-      vec2 destinationPx = (destinationUv - uArtworkBounds.xy) * uTextureSize;
-      float destinationY = destinationPx.y / artworkSizePx.y + 0.5;
-
-      // The angle is a real camera-tilt control: zero is front-on, increasing
-      // it pulls the top edge toward the vanishing line while the bottom stays
-      // at full scale. The inverse form keeps the source texture undistorted.
-      float tilt = clamp(uPerspectiveAngle / 75.0, 0.0, 1.0);
-      float topScale = mix(1.0, 0.48, sin(tilt * 1.30899694));
-      float clampedY = clamp(destinationY, 0.0, 1.0);
-      float curveA = 0.5 * (1.0 - topScale);
-      float curveArea = topScale + curveA;
-      float curveTarget = clampedY * curveArea;
-      float sourceY = (2.0 * curveTarget) / max(
-        topScale + sqrt(topScale * topScale + 4.0 * curveA * curveTarget),
-        0.0001
-      );
-      float edgeScale = mix(topScale, 1.0, step(0.0, destinationY - 1.0));
-      sourceY += (destinationY - clampedY) / max(edgeScale, 0.01);
-
-      float perspectiveScale = mix(topScale, 1.0, clamp(sourceY, 0.0, 1.0));
-      float depthFlare = 1.0
-        + depthAmount * mix(0.012, 0.038, uGlitchStrength) * tilt * clampedY;
-      destinationPx.x /= max(0.46, perspectiveScale * depthFlare);
-      destinationPx.y = (sourceY - 0.5) * artworkSizePx.y;
-      return uArtworkBounds.xy + destinationPx / uTextureSize;
+    vec2 dotMaterialSourceUv(vec2 destinationUv) {
+      // DOT is baked front-on at 1600x900. Perspective belongs to the final
+      // screen pass so dots, extrusion, glitches and background share one
+      // coherent camera transform.
+      return destinationUv;
     }
 
     vec4 dotGlitchMaterial(vec2 uv) {
       float strength = uGlitchStrength;
+      float glitchFade = smoothstep(0.0, 0.08, strength);
       float pitch = max(5.0, uDotPitch);
       vec2 artworkSizePx = max(uArtworkBounds.zw * uTextureSize, vec2(1.0));
       vec2 artworkLocalPx = (uv - uArtworkBounds.xy) * uTextureSize;
-      float perspectiveRow = clamp(
+      float artworkRow = clamp(
         artworkLocalPx.y / artworkSizePx.y + 0.5,
         0.0,
         1.0
       );
 
-      // Tearing is seeded in full-artboard space. Every glyph now belongs to
-      // one baked signal field, so no per-glyph cell can leave a vertical cut.
-      float sliceHeight = mix(26.0, 12.0, strength);
-      float sliceRow = floor((artworkLocalPx.y + 4096.0) / sliceHeight);
-      float sliceNoise = hash21(vec2(sliceRow * 1.17, 19.0));
-      float tearGate = step(mix(0.992, 0.82, strength), sliceNoise);
-      float tearDirection = hash21(vec2(sliceRow * 2.31, 47.0)) * 2.0 - 1.0;
-      float tearPx = tearDirection * mix(5.0, 32.0, strength) * tearGate;
-
-      float lineHeight = max(2.2, pitch * 0.38);
-      float lineRow = floor((artworkLocalPx.y + 2048.0) / lineHeight);
-      float lineNoise = hash21(vec2(lineRow * 4.13, 71.0));
-      float frontDrop = step(mix(0.998, 0.925, strength), lineNoise);
-      float hardDrop = step(
-        mix(0.9995, 0.978, strength),
-        hash21(vec2(lineRow * 7.91, 103.0))
+      // A shared 2D signal field replaces the old fixed rows. The chunks are
+      // full-artwork blocks, not glyph-owner cells: each gets an independent
+      // width, height, displacement and dropout while remaining continuous
+      // across nearby letterforms.
+      float sliceBandPx = 18.0;
+      float sliceBandCoord = (artworkLocalPx.y + 4096.0) / sliceBandPx;
+      float sliceRow = floor(sliceBandCoord);
+      float sliceLocalY = fract(sliceBandCoord);
+      float chunkCellPx = 112.0;
+      float rowOffsetPx = (hash21(vec2(sliceRow, 11.0)) - 0.5) * chunkCellPx;
+      float chunkCoord = (artworkLocalPx.x + rowOffsetPx + 4096.0) / chunkCellPx;
+      float chunkColumn = floor(chunkCoord);
+      float chunkLocalX = fract(chunkCoord);
+      vec2 chunkSeed = vec2(chunkColumn, sliceRow);
+      float chunkWidth = mix(0.18, 0.78, hash21(chunkSeed + vec2(17.0, 3.0)));
+      float chunkHeight = mix(0.20, 0.90, hash21(chunkSeed + vec2(5.0, 29.0)));
+      vec2 chunkCenter = vec2(
+        mix(
+          chunkWidth * 0.5,
+          1.0 - chunkWidth * 0.5,
+          hash21(chunkSeed + vec2(41.0, 7.0))
+        ),
+        mix(
+          chunkHeight * 0.5,
+          1.0 - chunkHeight * 0.5,
+          hash21(chunkSeed + vec2(73.0, 13.0))
+        )
+      );
+      vec2 chunkDistance = vec2(chunkWidth, chunkHeight) * 0.5
+        - abs(vec2(chunkLocalX, sliceLocalY) - chunkCenter);
+      vec2 chunkAA = max(
+        fwidth(vec2(chunkLocalX, sliceLocalY)) * 1.35,
+        vec2(0.002)
+      );
+      float chunkRect = smoothstep(-chunkAA.x, chunkAA.x, chunkDistance.x)
+        * smoothstep(-chunkAA.y, chunkAA.y, chunkDistance.y);
+      float chunkEnabled = step(
+        mix(0.965, 0.40, strength),
+        hash21(chunkSeed + vec2(101.0, 37.0))
+      );
+      float activeRow = step(
+        mix(0.995, 0.25, strength),
+        hash21(vec2(sliceRow, 263.0))
+      );
+      float heroRow = step(
+        mix(0.999, 0.84, strength),
+        hash21(vec2(sliceRow, 233.0))
+      ) * smoothstep(0.50, 0.86, strength);
+      float heroFragment = step(
+        0.52,
+        hash21(chunkSeed + vec2(239.0, 107.0))
+      );
+      float tearGate = chunkRect * max(
+        chunkEnabled * activeRow,
+        heroRow * heroFragment
+      ) * glitchFade;
+      float tearDirection = hash21(chunkSeed + vec2(131.0, 47.0)) * 2.0 - 1.0;
+      float tearPx = tearDirection
+        * mix(7.0, 58.0, strength)
+        * mix(0.30, 1.0, hash21(chunkSeed + vec2(151.0, 59.0)))
+        * tearGate;
+      float frontDrop = tearGate * step(
+        mix(0.997, 0.62, strength),
+        hash21(chunkSeed + vec2(181.0, 83.0))
+      );
+      float hardDrop = tearGate * step(
+        mix(0.9995, 0.80, strength),
+        hash21(chunkSeed + vec2(211.0, 97.0))
       );
 
-      vec2 sourceUv = dotPerspectiveSourceUv(
-        uv - vec2(tearPx / uTextureSize.x, 0.0),
-        0.0
+      vec2 sourceUv = dotMaterialSourceUv(
+        uv - vec2(tearPx / uTextureSize.x, 0.0)
       );
-      float tornFill = mergedFillAt(sourceUv);
+      // Keep the displaced face distance available for the dot mask. The
+      // magenta separator is built from actual extrusion plates below, not an
+      // isotropic SDF outline around this face.
+      float tornDistance = mergedRawDistancePx(sourceUv) + ${BODY_INFLATE.toFixed(1)};
+      float tornAA = max(1.65, fwidth(tornDistance) * 1.35);
+      float tornFill = smoothstep(-tornAA, tornAA, tornDistance);
 
-      vec2 perspectiveLocalPx = (sourceUv - uArtworkBounds.xy) * uTextureSize;
-      vec2 dotCell = fract(perspectiveLocalPx / pitch) - 0.5;
-      float dotRadius = mix(0.27, 0.36, perspectiveRow);
-      float dots = 1.0 - smoothstep(dotRadius, dotRadius + 0.12, length(dotCell));
+      vec2 materialLocalPx = (sourceUv - uArtworkBounds.xy) * uTextureSize;
+      vec2 dotCell = fract(materialLocalPx / pitch) - 0.5;
+      float dotDistance = length(dotCell);
+      float dotRadius = 0.40;
+      float dotAA = max(fwidth(dotDistance) * 1.20, 0.035);
+      float dots = 1.0 - smoothstep(dotRadius - dotAA, dotRadius + dotAA, dotDistance);
+      float dotHalo = 1.0 - smoothstep(dotRadius + 0.01, 0.58, dotDistance);
       float core = tornFill * dots * (1.0 - frontDrop) * (1.0 - hardDrop);
+      float coreHalo = tornFill * dotHalo * (1.0 - frontDrop) * (1.0 - hardDrop);
 
       float cyanMisregister = mergedFillAt(
-        dotPerspectiveSourceUv(
-          uv - vec2(mix(2.0, 5.5, strength), -1.0) / uTextureSize,
-          0.0
+        dotMaterialSourceUv(
+          uv - vec2(mix(2.0, 5.5, strength), -1.0) / uTextureSize
         )
       ) * dots * (1.0 - hardDrop);
 
-      float pinkTear = mergedFillAt(
-        dotPerspectiveSourceUv(
-          uv - vec2((tearPx + mix(6.0, 11.0, strength)) / uTextureSize.x, 0.0),
-          0.0
+      float blueTear = mergedFillAt(
+        dotMaterialSourceUv(
+          uv - vec2(
+            (tearPx - tearDirection * mix(9.0, 21.0, strength)) / uTextureSize.x,
+            0.0
+          )
         )
-      ) * dots * tearGate * (1.0 - hardDrop);
+      ) * tearGate * (1.0 - hardDrop);
 
-      // Six full-frame plates form one continuous baked volume. They may pass
+      // Ten full-frame plates form one continuous baked volume. They may pass
       // freely through the old glyph-cell boundaries but still stop at the
       // actual 1600×900 artboard edge.
-      vec2 depthVectorPx = vec2(mix(0.08, 0.16, strength), 1.0) * uExtrusion;
+      vec2 depthVectorPx = vec2(mix(0.12, 0.24, strength), 1.0) * uExtrusion;
       float depthEnabled = smoothstep(0.0, 1.0, uExtrusion);
       float depthRidge = pow(
         0.5 + 0.5 * cos(
-          6.2831853 * (uv.y * uTextureSize.y / max(6.0, pitch * 0.78) + 0.071)
+          6.2831853 * (uv.y * uTextureSize.y / max(5.0, pitch * 0.62) + 0.071)
         ),
         3.0
       );
-      float depthGroove = 1.0 - smoothstep(0.38, 0.62, depthRidge);
       float alpha = 0.0;
       vec3 premultiplied = vec3(0.0);
-      for (int layer = 6; layer >= 1; layer -= 1) {
-        float depthAmount = float(layer) / 6.0;
-        float layerTearPx = tearPx * mix(0.76, 1.0, 1.0 - depthAmount);
+      for (int layer = 10; layer >= 1; layer -= 1) {
+        float depthAmount = float(layer) / 10.0;
+        // Preserve a shared tear direction, then add a bounded layer-local
+        // offset so the stack breaks into plates instead of one synchronized
+        // vertical cut. The same event seed keeps the offsets coherent.
+        vec2 layerGlitchSeed = chunkSeed + vec2(
+          float(layer) * 37.0,
+          float(layer) * 17.0
+        );
+        float layerGlitchGate = tearGate * step(
+          mix(0.98, 0.30, strength),
+          hash21(layerGlitchSeed + vec2(271.0, 113.0))
+        );
+        float layerJitterPx = (
+          hash21(layerGlitchSeed + vec2(313.0, 127.0)) * 2.0 - 1.0
+        ) * mix(4.0, 12.0, depthAmount) * strength * layerGlitchGate;
+        float layerTearPx = tearPx * mix(0.76, 1.0, 1.0 - depthAmount)
+          + layerJitterPx;
         vec2 layerDestinationUv = uv
           - (depthVectorPx * depthAmount + vec2(layerTearPx, 0.0)) / uTextureSize;
-        vec2 layerSourceUv = dotPerspectiveSourceUv(
-          layerDestinationUv,
-          depthAmount
+        vec2 layerSourceUv = dotMaterialSourceUv(layerDestinationUv);
+        float layerHardDrop = hardDrop * step(
+          0.42,
+          hash21(layerGlitchSeed + vec2(347.0, 191.0))
         );
-        float layerFill = mergedFillAt(layerSourceUv) * (1.0 - hardDrop);
+        float layerFill = mergedFillAt(layerSourceUv) * (1.0 - layerHardDrop);
         float layerPulse = mod(float(layer), 2.0);
-        vec3 deepBlue = vec3(0.018, 0.045, 0.28) + uCyan * 0.045;
-        float colorDepth = smoothstep(0.10, 1.0, depthAmount);
-        vec3 violet = mix(deepBlue, uPink, 0.48);
-        vec3 layerColor = mix(deepBlue, violet, smoothstep(0.0, 0.52, colorDepth));
-        layerColor = mix(layerColor, uPink, smoothstep(0.52, 1.0, colorDepth));
-        layerColor = mix(layerColor, uPink, depthRidge * (0.16 + layerPulse * 0.12));
-        layerColor *= mix(0.54, 1.08, depthRidge);
-        layerColor += deepBlue * depthGroove * 0.16;
+        // A layer-local dropout produces black voids inside the volume instead
+        // of cutting every depth plate with the same vertical column.
+        vec2 depthChunk = vec2(
+          floor((artworkLocalPx.x + float(layer) * 23.0) / 64.0),
+          sliceRow + float(layer) * 19.0
+        );
+        float depthChunkDark = step(
+          mix(0.985, 0.885, strength),
+          hash21(depthChunk + vec2(503.0, 149.0))
+        ) * glitchFade;
+        float depthDarkness = mix(
+          0.82,
+          0.98,
+          hash21(depthChunk + vec2(541.0, 173.0))
+        );
+
+        // Keep the far underside dark cobalt and bring violet forward toward
+        // the face. The former ordering put the brightest violet on the most
+        // exposed rear plate, turning the whole base into one flat purple slab.
+        vec3 deepBlue = vec3(0.006, 0.004, 0.40) + uCyan * 0.004;
+        vec3 violet = vec3(0.18, 0.008, 0.70);
+        float farPlate = smoothstep(0.54, 1.0, depthAmount);
+        vec3 plateBody = mix(violet, deepBlue, farPlate);
+
+        // Dark troughs separate the plates. A narrow silhouette lip then
+        // restores the electric-blue/violet edge without another SDF lookup.
+        plateBody *= mix(0.38, 1.10, depthRidge);
+        float plateLip = clamp(4.0 * layerFill * (1.0 - layerFill), 0.0, 1.0);
+        vec3 lipColor = mix(
+          vec3(0.018, 0.050, 0.94),
+          vec3(0.30, 0.010, 0.92),
+          layerPulse
+        );
+        vec3 deepLayerColor = mix(plateBody, lipColor, plateLip * 0.92);
+        // OUTLINE THICKNESS selects actual front extrusion plates. The first
+        // one is the emissive cap; additional plates step down toward dark
+        // magenta instead of becoming an isotropic 2D SDF outline.
+        float outlineLayers = clamp(floor(uDotOutlineLayers + 0.5), 0.0, 6.0);
+        float magentaPlate = 1.0 - step(outlineLayers + 0.5, float(layer));
+        float magentaFrontness = 1.0 - clamp(
+          (float(layer) - 1.0) / max(outlineLayers - 1.0, 1.0),
+          0.0,
+          1.0
+        );
+        vec3 magentaPlateColor = uPink * mix(0.58, 1.0, magentaFrontness);
+        magentaPlateColor *= mix(0.84, 1.08, depthRidge);
+        vec3 layerColor = mix(deepLayerColor, magentaPlateColor, magentaPlate);
+        // Deep plates take the full black corruption; front magenta plates
+        // keep the same glitch blocks as dark pink rather than turning black.
+        float darkChunkStrength = depthChunkDark
+          * mix(0.34, 1.0, 1.0 - magentaPlate);
+        layerColor = mix(
+          layerColor,
+          vec3(0.0004, 0.0001, 0.006),
+          darkChunkStrength * depthDarkness
+        );
         float layerAlpha = layerFill
           * depthEnabled
-          * mix(0.78, 0.96, depthRidge)
+          * mix(0.58, 0.82, depthRidge)
           * mix(0.92, 1.0, layerPulse);
+        float magentaAlpha = mix(0.86, 0.94, magentaFrontness);
+        layerAlpha = mix(
+          layerAlpha,
+          layerFill * depthEnabled * magentaAlpha,
+          magentaPlate
+        );
+        layerAlpha = mix(
+          layerAlpha,
+          layerFill * depthEnabled * 0.92,
+          darkChunkStrength * 0.88
+        );
         premultiplied = layerColor * layerAlpha
           + premultiplied * (1.0 - layerAlpha);
         alpha = layerAlpha + alpha * (1.0 - layerAlpha);
       }
 
-      float carrierHeight = mix(4.2, 2.6, strength);
-      float carrierRow = floor((uv.y * uTextureSize.y + 8192.0) / carrierHeight);
-      float carrierSeed = hash21(vec2(carrierRow * 0.731, 17.0));
-      float carrierGate = step(mix(0.998, 0.905, strength), carrierSeed);
+      float carrierBandPx = 3.0;
+      float carrierBandCoord = (uv.y * uTextureSize.y + 8192.0) / carrierBandPx;
+      float carrierRow = floor(carrierBandCoord);
+      float carrierLocalY = fract(carrierBandCoord);
+      float carrierCellPx = 128.0;
+      float carrierRowOffset = (hash21(vec2(carrierRow, 307.0)) - 0.5)
+        * carrierCellPx;
+      float carrierCoord = (
+        uv.x * uTextureSize.x + carrierRowOffset + 8192.0
+      ) / carrierCellPx;
+      float carrierColumn = floor(carrierCoord);
+      float carrierLocalX = fract(carrierCoord);
+      vec2 carrierCell = vec2(carrierColumn, carrierRow);
+      float carrierSeed = hash21(carrierCell + vec2(17.0, 311.0));
+      float carrierGate = step(mix(0.995, 0.76, strength), carrierSeed);
+      float segmentWidth = mix(
+        0.14,
+        0.88,
+        hash21(carrierCell + vec2(29.0, 331.0))
+      );
+      float segmentCenter = mix(
+        segmentWidth * 0.5,
+        1.0 - segmentWidth * 0.5,
+        hash21(carrierCell + vec2(43.0, 347.0))
+      );
+      float segmentDistance = segmentWidth * 0.5
+        - abs(carrierLocalX - segmentCenter);
+      float segmentAA = max(fwidth(carrierLocalX) * 1.35, 0.002);
+      float segmentMask = smoothstep(-segmentAA, segmentAA, segmentDistance);
+      float carrierThickness = mix(
+        0.30,
+        0.88,
+        hash21(carrierCell + vec2(59.0, 359.0))
+      );
+      float carrierY = 1.0 - smoothstep(
+        carrierThickness * 0.5,
+        carrierThickness * 0.5 + max(fwidth(carrierLocalY) * 1.35, 0.01),
+        abs(carrierLocalY - 0.5)
+      );
+      float longCarrier = step(
+        0.88,
+        hash21(carrierCell + vec2(71.0, 373.0))
+      );
+      float carrierMagnitude = mix(
+        mix(14.0, 76.0, hash21(carrierCell + vec2(83.0, 389.0))),
+        mix(140.0, 310.0, hash21(carrierCell + vec2(97.0, 401.0))),
+        longCarrier
+      );
       float carrierDirection = step(
         0.5,
-        hash21(vec2(carrierRow * 1.91, 53.0))
+        hash21(carrierCell + vec2(109.0, 419.0))
       ) * 2.0 - 1.0;
-      float carrierLength = carrierDirection
-        * mix(18.0, 68.0, strength)
-        * mix(0.72, 1.0, hash21(vec2(carrierRow + 9.0, 31.0)));
-      float carrierA = mergedFillAt(dotPerspectiveSourceUv(
-        uv - vec2(carrierLength * 0.25 / uTextureSize.x, 0.0),
-        0.0
+      float carrierLength = carrierDirection * carrierMagnitude * strength;
+      float carrierA = mergedFillAt(dotMaterialSourceUv(
+        uv - vec2(carrierLength * 0.25 / uTextureSize.x, 0.0)
       ));
-      float carrierB = mergedFillAt(dotPerspectiveSourceUv(
-        uv - vec2(carrierLength * 0.50 / uTextureSize.x, 0.0),
-        0.0
+      float carrierB = mergedFillAt(dotMaterialSourceUv(
+        uv - vec2(carrierLength * 0.50 / uTextureSize.x, 0.0)
       ));
-      float carrierC = mergedFillAt(dotPerspectiveSourceUv(
-        uv - vec2(carrierLength * 0.75 / uTextureSize.x, 0.0),
-        0.0
+      float carrierC = mergedFillAt(dotMaterialSourceUv(
+        uv - vec2(carrierLength * 0.75 / uTextureSize.x, 0.0)
       ));
-      float carrierD = mergedFillAt(dotPerspectiveSourceUv(
-        uv - vec2(carrierLength / uTextureSize.x, 0.0),
-        0.0
+      float carrierD = mergedFillAt(dotMaterialSourceUv(
+        uv - vec2(carrierLength / uTextureSize.x, 0.0)
       ));
       float carrierFill = max(max(carrierA, carrierB), max(carrierC, carrierD));
-      float carrierDash = mix(
-        0.38,
-        1.0,
-        step(0.32, hash21(vec2(floor(uv.x * uTextureSize.x / 8.0), carrierRow)))
-      );
-      float signalTrail = carrierFill * carrierGate * carrierDash * (1.0 - hardDrop);
-      float signalHead = carrierD * carrierGate * (1.0 - hardDrop);
+      float carrierMask = carrierGate * segmentMask * carrierY * glitchFade;
+      float signalTrail = carrierFill * carrierMask * (1.0 - hardDrop);
+      float signalHead = carrierD * carrierMask * (1.0 - hardDrop);
 
-      float microCell = hash21(floor(perspectiveLocalPx / pitch));
-      vec3 coreColor = mix(
-        uCyan,
-        vec3(0.94, 1.0, 1.0),
-        step(0.91, microCell) * 0.28
-      );
+      float microCell = hash21(floor(materialLocalPx / pitch));
+      vec3 coreColor = min(
+        uCyan * 1.04 + vec3(0.075, 0.010, 0.0),
+        vec3(1.0)
+      ) * mix(1.02, 1.08, step(0.94, microCell));
 
-      float pinkTrailAlpha = signalTrail * mix(0.18, 0.48, strength);
+      float pinkTrailAlpha = signalTrail * mix(0.26, 0.72, strength);
       premultiplied = uPink * pinkTrailAlpha + premultiplied * (1.0 - pinkTrailAlpha);
       alpha = pinkTrailAlpha + alpha * (1.0 - pinkTrailAlpha);
-      float cyanTrailAlpha = signalHead * mix(0.12, 0.38, strength);
+      float cyanTrailAlpha = signalHead * mix(0.16, 0.50, strength);
       premultiplied = uCyan * cyanTrailAlpha + premultiplied * (1.0 - cyanTrailAlpha);
       alpha = cyanTrailAlpha + alpha * (1.0 - cyanTrailAlpha);
 
-      float tearAlpha = pinkTear * 0.72;
-      premultiplied = uPink * tearAlpha + premultiplied * (1.0 - tearAlpha);
-      alpha = tearAlpha + alpha * (1.0 - tearAlpha);
+      float blueTearAlpha = blueTear * 0.56;
+      vec3 blueTearColor = vec3(0.018, 0.055, 0.96);
+      premultiplied = blueTearColor * blueTearAlpha
+        + premultiplied * (1.0 - blueTearAlpha);
+      alpha = blueTearAlpha + alpha * (1.0 - blueTearAlpha);
 
       float facePlate = tornFill * (1.0 - frontDrop) * (1.0 - hardDrop);
-      float facePlateAlpha = facePlate * 0.84;
+      float facePlateAlpha = facePlate * 0.95;
       vec3 facePlateColor = mix(
-        vec3(0.004, 0.022, 0.085),
-        uCyan * vec3(0.08, 0.19, 0.24),
-        perspectiveRow
+        vec3(0.002, 0.010, 0.050),
+        uCyan * vec3(0.045, 0.12, 0.18),
+        artworkRow
       );
       premultiplied = facePlateColor * facePlateAlpha
         + premultiplied * (1.0 - facePlateAlpha);
       alpha = facePlateAlpha + alpha * (1.0 - facePlateAlpha);
 
-      float cyanAlpha = cyanMisregister * 0.28;
+      float cyanAlpha = cyanMisregister * 0.54 * glitchFade;
       premultiplied = uCyan * cyanAlpha + premultiplied * (1.0 - cyanAlpha);
       alpha = cyanAlpha + alpha * (1.0 - cyanAlpha);
+
+      vec3 coreHaloColor = min(uCyan * 0.94 + vec3(0.012, 0.008, 0.0), vec3(1.0));
+      float coreHaloAlpha = coreHalo * 0.68;
+      premultiplied = coreHaloColor * coreHaloAlpha
+        + premultiplied * (1.0 - coreHaloAlpha);
+      alpha = coreHaloAlpha + alpha * (1.0 - coreHaloAlpha);
 
       premultiplied = coreColor * core + premultiplied * (1.0 - core);
       alpha = core + alpha * (1.0 - core);
 
-      float slicePhase = fract((artworkLocalPx.y + 4096.0) / sliceHeight);
-      float distanceToSliceEdge = min(slicePhase, 1.0 - slicePhase) * sliceHeight;
-      float tearEdge = (1.0 - smoothstep(0.35, 1.35, distanceToSliceEdge))
-        * tearGate
-        * tornFill;
-      float edgeAlpha = clamp(tearEdge * 0.42, 0.0, 1.0);
-      vec3 edgeColor = mix(uPink, uCyan, 0.34);
-      premultiplied = edgeColor * edgeAlpha + premultiplied * (1.0 - edgeAlpha);
-      alpha = edgeAlpha + alpha * (1.0 - edgeAlpha);
       return vec4(premultiplied, alpha);
     }
 
@@ -783,17 +932,30 @@
 
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
         vec4 dotMaterial = dotGlitchMaterial(uv);
-        vec2 dotFaceUv = dotPerspectiveSourceUv(uv, 0.0);
+        vec2 dotFaceUv = dotMaterialSourceUv(uv);
         float dotFaceD = mergedRawDistancePx(dotFaceUv) + ${BODY_INFLATE.toFixed(1)};
         float dotFaceAA = max(1.65, fwidth(dotFaceD) * 1.35);
         float dotFaceFill = smoothstep(-dotFaceAA, dotFaceAA, dotFaceD);
+        float blueRimFill = smoothstep(-4.0 - dotFaceAA, -4.0 + dotFaceAA, dotFaceD);
+        float navyRimFill = smoothstep(-10.0 - dotFaceAA, -10.0 + dotFaceAA, dotFaceD);
+        float blueRim = max(blueRimFill - dotFaceFill, 0.0);
+        float navyRim = max(navyRimFill - blueRimFill, 0.0);
         float dotGlow = exp(-max(-dotFaceD, 0.0) / 16.0)
           * (1.0 - dotFaceFill)
           * uGlow;
         vec3 dotBackground = background
-          + mix(uPink, uCyan, uv.x) * dotGlow * 0.24;
+          + uCyan * dotGlow * 0.24
+          + uPink * dotGlow * 0.045;
+        vec3 outlinedBackground = mix(dotBackground, vec3(0.006, 0.001, 0.024), navyRim * 0.98);
+        // The front magenta plates provide the visible separator; this subtle
+        // dark-purple backstop only prevents gaps from glowing like an outline.
+        outlinedBackground = mix(
+          outlinedBackground,
+          vec3(0.030, 0.002, 0.14),
+          blueRim * 0.52
+        );
         fragColor = vec4(
-          dotBackground * (1.0 - dotMaterial.a) + dotMaterial.rgb,
+          outlinedBackground * (1.0 - dotMaterial.a) + dotMaterial.rgb,
           1.0
         );
         return;
@@ -1054,6 +1216,63 @@
     }
   `;
 
+  const dotPresentFragmentShaderSource = `#version 300 es
+    precision highp float;
+
+    in vec2 vUv;
+    layout(location = 0) out vec4 fragColor;
+    uniform sampler2D uSceneTexture;
+    uniform vec2 uSceneSize;
+    uniform float uPerspectiveAngle;
+    uniform float uGlow;
+
+    float dotPresentLuma(vec3 color) {
+      return dot(color, vec3(0.2126, 0.7152, 0.0722));
+    }
+
+    vec3 dotHighlightAt(vec2 uv) {
+      vec3 color = texture(uSceneTexture, clamp(uv, vec2(0.0), vec2(1.0))).rgb;
+      float peak = max(max(color.r, color.g), color.b);
+      float emission = max(dotPresentLuma(color), peak * 0.72);
+      return color * smoothstep(0.20, 0.68, emission);
+    }
+
+    void main() {
+      float perspective = clamp(uPerspectiveAngle / 75.0, 0.0, 1.0);
+      // The complete 1600x900 DOT bake is projected once here. vUv.y is zero
+      // at the visual bottom, so the upper edge narrows while the bottom stays
+      // anchored at full width.
+      float topScale = mix(1.0, 0.72, perspective);
+      float perspectiveRow = clamp((vUv.y - 0.05) / 0.90, 0.0, 1.0);
+      float rowScale = mix(1.0, topScale, perspectiveRow);
+      float sourceX = 0.5 + (vUv.x - 0.5) / max(rowScale, 0.01);
+      vec2 sourceUv = vec2(sourceX, vUv.y);
+
+      float edgeDistance = 0.5 * rowScale - abs(vUv.x - 0.5);
+      float edgeAA = max(fwidth(edgeDistance), 1.0 / uSceneSize.x);
+      float inside = perspective < 0.0001
+        ? 1.0
+        : smoothstep(-edgeAA, edgeAA, edgeDistance);
+
+      vec3 scene = texture(uSceneTexture, clamp(sourceUv, vec2(0.0), vec2(1.0))).rgb;
+      float sourcePixelX = 1.0 / (uSceneSize.x * max(rowScale, 0.01));
+      float sourcePixelY = 1.0 / uSceneSize.y;
+      vec3 bloom = dotHighlightAt(sourceUv) * 0.24;
+      bloom += dotHighlightAt(sourceUv + vec2(sourcePixelX * 2.0, 0.0)) * 0.15;
+      bloom += dotHighlightAt(sourceUv - vec2(sourcePixelX * 2.0, 0.0)) * 0.15;
+      bloom += dotHighlightAt(sourceUv + vec2(sourcePixelX * 7.0, 0.0)) * 0.08;
+      bloom += dotHighlightAt(sourceUv - vec2(sourcePixelX * 7.0, 0.0)) * 0.08;
+      bloom += dotHighlightAt(sourceUv + vec2(0.0, sourcePixelY * 2.0)) * 0.12;
+      bloom += dotHighlightAt(sourceUv - vec2(0.0, sourcePixelY * 2.0)) * 0.12;
+      bloom += dotHighlightAt(sourceUv + vec2(0.0, sourcePixelY * 5.0)) * 0.03;
+      bloom += dotHighlightAt(sourceUv - vec2(0.0, sourcePixelY * 5.0)) * 0.03;
+      scene += bloom * uGlow * 0.96;
+
+      vec3 outside = mix(vec3(0.001, 0.003, 0.010), vec3(0.005, 0.001, 0.012), vUv.y);
+      fragColor = vec4(mix(outside, scene, inside), 1.0);
+    }
+  `;
+
   function compileShader(type, source) {
     const shader = gl.createShader(type);
     gl.shaderSource(shader, source);
@@ -1086,10 +1305,12 @@
   let program;
   let crtProgram;
   let copyProgram;
+  let dotPresentProgram;
   try {
     program = createProgram();
     crtProgram = createProgram(crtFragmentShaderSource);
     copyProgram = createProgram(copyFragmentShaderSource);
+    dotPresentProgram = createProgram(dotPresentFragmentShaderSource);
   } catch (error) {
     ui.renderError.hidden = false;
     ui.renderError.textContent = error.message;
@@ -1117,8 +1338,8 @@
     reflectionOffset: gl.getUniformLocation(program, "uReflectionOffset"),
     liquidWarp: gl.getUniformLocation(program, "uLiquidWarp"),
     dotPitch: gl.getUniformLocation(program, "uDotPitch"),
+    dotOutlineLayers: gl.getUniformLocation(program, "uDotOutlineLayers"),
     glitchStrength: gl.getUniformLocation(program, "uGlitchStrength"),
-    perspectiveAngle: gl.getUniformLocation(program, "uPerspectiveAngle"),
     artworkBounds: gl.getUniformLocation(program, "uArtworkBounds"),
     extrusion: gl.getUniformLocation(program, "uExtrusion"),
     glow: gl.getUniformLocation(program, "uGlow"),
@@ -1138,6 +1359,13 @@
   const copyLocations = {
     position: gl.getAttribLocation(copyProgram, "aPosition"),
     sceneTexture: gl.getUniformLocation(copyProgram, "uSceneTexture"),
+  };
+  const dotPresentLocations = {
+    position: gl.getAttribLocation(dotPresentProgram, "aPosition"),
+    sceneTexture: gl.getUniformLocation(dotPresentProgram, "uSceneTexture"),
+    sceneSize: gl.getUniformLocation(dotPresentProgram, "uSceneSize"),
+    perspectiveAngle: gl.getUniformLocation(dotPresentProgram, "uPerspectiveAngle"),
+    glow: gl.getUniformLocation(dotPresentProgram, "uGlow"),
   };
 
   const quadBuffer = gl.createBuffer();
@@ -2294,8 +2522,8 @@
   function render() {
     resizeCanvas();
     // Every material is baked to the canonical artboard first. The responsive
-    // canvas is now only a presentation surface; export can read this exact
-    // 1600×900 texture without re-running a glyph-atlas renderer.
+    // canvas is only a presentation surface. A future exporter must run the
+    // same DOT/CRT/copy present pass into its final 1600x900 target.
     const bakeReady = ensureSceneTarget(TEXTURE_WIDTH, TEXTURE_HEIGHT);
     if (bakeReady) {
       gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFramebuffer);
@@ -2342,8 +2570,8 @@
     );
     gl.uniform1f(locations.liquidWarp, state.liquidWarp / 1000);
     gl.uniform1f(locations.dotPitch, state.dotPitch);
+    gl.uniform1f(locations.dotOutlineLayers, state.dotOutlineLayers);
     gl.uniform1f(locations.glitchStrength, state.glitchStrength / 100);
-    gl.uniform1f(locations.perspectiveAngle, state.perspectiveAngle);
     gl.uniform4fv(locations.artworkBounds, state.artworkBounds);
     gl.uniform1f(locations.extrusion, state.extrusion);
     gl.uniform1f(locations.glow, state.glow / 100);
@@ -2357,9 +2585,14 @@
     if (!bakeReady) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, ui.canvas.width, ui.canvas.height);
+    const useDotPresent = activePreset().mode === 1 && !state.debugId;
     const useCrt = activePreset().mode > 1.5 && !state.debugId;
-    const presentProgram = useCrt ? crtProgram : copyProgram;
-    const presentLocations = useCrt ? crtLocations : copyLocations;
+    const presentProgram = useDotPresent
+      ? dotPresentProgram
+      : (useCrt ? crtProgram : copyProgram);
+    const presentLocations = useDotPresent
+      ? dotPresentLocations
+      : (useCrt ? crtLocations : copyLocations);
     gl.useProgram(presentProgram);
     gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
     gl.enableVertexAttribArray(presentLocations.position);
@@ -2367,7 +2600,11 @@
     gl.activeTexture(gl.TEXTURE7);
     gl.bindTexture(gl.TEXTURE_2D, sceneTexture);
     gl.uniform1i(presentLocations.sceneTexture, 7);
-    if (useCrt) {
+    if (useDotPresent) {
+      gl.uniform2f(dotPresentLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+      gl.uniform1f(dotPresentLocations.perspectiveAngle, state.perspectiveAngle);
+      gl.uniform1f(dotPresentLocations.glow, state.glow / 100);
+    } else if (useCrt) {
       gl.uniform2f(crtLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
       gl.uniform1f(crtLocations.scanlineSpacing, state.vhsScanlineSpacing);
       gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
@@ -2434,6 +2671,7 @@
     ui.reflectionOffsetYInput.value = String(state.reflectionOffsetY);
     ui.liquidWarpInput.value = String(state.liquidWarp);
     ui.dotPitchInput.value = String(state.dotPitch);
+    ui.dotOutlineLayersInput.value = String(state.dotOutlineLayers);
     ui.perspectiveAngleInput.value = String(state.perspectiveAngle);
     ui.glitchStrengthInput.value = String(state.glitchStrength);
     ui.vhsScanlineSpacingInput.value = String(state.vhsScanlineSpacing);
@@ -2457,6 +2695,7 @@
     ui.reflectionOffsetYValue.value = `${state.reflectionOffsetY > 0 ? "+" : ""}${state.reflectionOffsetY}%`;
     ui.liquidWarpValue.value = `${state.liquidWarp}%`;
     ui.dotPitchValue.value = `${state.dotPitch} PX`;
+    ui.dotOutlineLayersValue.value = `${state.dotOutlineLayers} LAYERS`;
     ui.perspectiveAngleValue.value = `${state.perspectiveAngle}°`;
     ui.glitchStrengthValue.value = `${state.glitchStrength}%`;
     ui.vhsScanlineSpacingValue.value = `${state.vhsScanlineSpacing} PX`;
@@ -2493,6 +2732,7 @@
     [ui.reflectionOffsetYInput, "reflectionOffsetY", ui.reflectionOffsetYValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.liquidWarpInput, "liquidWarp", ui.liquidWarpValue, (value) => `${value}%`],
     [ui.dotPitchInput, "dotPitch", ui.dotPitchValue, (value) => `${value} PX`],
+    [ui.dotOutlineLayersInput, "dotOutlineLayers", ui.dotOutlineLayersValue, (value) => `${value} LAYERS`],
     [ui.perspectiveAngleInput, "perspectiveAngle", ui.perspectiveAngleValue, (value) => `${value}°`],
     [ui.glitchStrengthInput, "glitchStrength", ui.glitchStrengthValue, (value) => `${value}%`],
     [ui.vhsScanlineSpacingInput, "vhsScanlineSpacing", ui.vhsScanlineSpacingValue, (value) => `${value} PX`],
