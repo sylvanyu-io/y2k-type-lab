@@ -383,15 +383,21 @@
 
     vec2 colorFieldUv(vec3 direction) {
       direction = normalize(direction);
-      // Project the full reflected sphere without letting the lookup turn back
-      // near a rounded rim. Preserve the broader legacy face traversal until
-      // that fold becomes possible, then blend into a monotonic half-angle map.
+      // Half-angle radius is monotonic over the full reflected hemisphere.
       float planarLength = length(direction.xy);
       vec2 orientation = direction.xy / max(planarLength, 0.0001);
       float halfAngleRadius = sqrt(max(0.0, (1.0 - direction.z) * 0.5));
-      float rimBlend = smoothstep(0.84, 0.97, planarLength);
-      float projectedRadius = mix(planarLength, halfAngleRadius, rimBlend);
+      // A monotonic expansion restores broad face traversal that pure
+      // half-angle compresses, without ever returning to reflected.xy.
+      float expandedRadius = 1.0 - (1.0 - halfAngleRadius) * (1.0 - halfAngleRadius);
+      float projectedRadius = mix(halfAngleRadius, expandedRadius, 0.68);
       return vec2(0.50) + orientation * projectedRadius * 0.48;
+    }
+
+    float boundedCoverage(float value, float coverage) {
+      float magnitude = abs(value);
+      return sign(value) * coverage * magnitude
+        / max(1.0 + (coverage - 1.0) * magnitude, 0.0001);
     }
 
     float softBox(vec2 point, vec2 center, vec2 halfSize, float feather) {
@@ -868,26 +874,38 @@
 
       vec3 reflected = reflect(vec3(0.0, 0.0, -1.0), normal);
       vec2 fieldUv = colorFieldUv(reflected);
+      float fieldRadius = length((fieldUv - vec2(0.5)) / 0.48);
+      float rimInterior = 1.0 - smoothstep(0.78, 0.98, fieldRadius);
       // Surface normal remains the primary lookup. Local semantic coordinates
-      // spread highlights per glyph while merged fields retain one silhouette.
-      fieldUv += materialLocal * vec2(0.020, 0.12);
-      // Scale around the lookup centre so a broad, nearly flat glyph face can
-      // traverse more of the environment without distorting its normal. Keep
-      // Y expansion conservative so the field retains a stable horizon.
+      // spread highlights across the face, then fade before the grazing rim so
+      // local offsets cannot push the rounded edge into a texture boundary.
+      fieldUv += materialLocal * vec2(0.020, 0.12) * rimInterior;
+      // Coverage expands the middle of the reflection while fixing the sphere
+      // poles in place. Unlike a linear scale, this cannot overshoot or fold.
       vec2 coverageScale = vec2(
         uEnvCoverage,
         1.0 + (uEnvCoverage - 1.0) * 0.35
       );
-      fieldUv = vec2(0.5) + (fieldUv - vec2(0.5)) * coverageScale;
+      vec2 fieldDirection = (fieldUv - vec2(0.5)) / 0.48;
+      fieldDirection = vec2(
+        boundedCoverage(fieldDirection.x, coverageScale.x),
+        boundedCoverage(fieldDirection.y, coverageScale.y)
+      );
+      fieldUv = vec2(0.5) + fieldDirection * 0.48;
       float glyphSeed = fract(floor(semanticId * 255.0 + 0.5) * 0.6180339);
-      fieldUv.x += mix(-0.0033, (glyphSeed - 0.5) * 0.028, semanticWeight);
+      fieldUv.x += mix(-0.0033, (glyphSeed - 0.5) * 0.028, semanticWeight) * rimInterior;
       fieldUv += uReflectionOffset;
-      fieldUv.y = clamp(fieldUv.y, 0.002, 0.998);
 
-      // The reflection field owns the detail. Roughness only selects a softer
-      // mip level, so it never wrinkles the glyph normal or dirties a clear
-      // mirror at zero.
-      vec4 fieldSample = texture(uColorFieldTexture, fieldUv, uRoughness * 5.5);
+      // The reflection field owns the detail. One hardware-filtered lookup
+      // uses mirrored wrapping so non-seamless library assets never stretch a
+      // clamped terminal row across the rounded rim.
+      float fieldFootprint = exp2(uRoughness * 5.5);
+      vec4 fieldSample = textureGrad(
+        uColorFieldTexture,
+        fieldUv,
+        dFdx(fieldUv) * fieldFootprint,
+        dFdy(fieldUv) * fieldFootprint
+      );
       vec3 sampledField = srgbToLinear(fieldSample.rgb);
       float sampledLuma = dot(sampledField, vec3(0.2126, 0.7152, 0.0722));
       sampledField = max(vec3(0.0), mix(vec3(sampledLuma), sampledField, 1.58));
@@ -1155,8 +1173,8 @@
 
   gl.activeTexture(gl.TEXTURE5);
   gl.bindTexture(gl.TEXTURE_2D, colorFieldTexture);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
   gl.texImage2D(
     gl.TEXTURE_2D,
     0,
@@ -1464,8 +1482,8 @@
       gl.activeTexture(gl.TEXTURE5);
       gl.bindTexture(gl.TEXTURE_2D, nextTexture);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.MIRRORED_REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.MIRRORED_REPEAT);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
