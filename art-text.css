@@ -162,7 +162,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   text-align: left;
   transition: 150ms ease-out;
 }
-.reflection-card canvas { display: block; width: 100%; aspect-ratio: 16 / 9; background: #050407; }
+.reflection-card canvas { display: block; width: 100%; aspect-ratio: 1; background: #050407; }
 .reflection-card span { display: block; overflow: hidden; padding: 7px 6px; font: 700 9px/1 var(--mono); letter-spacing: 0.025em; text-overflow: ellipsis; white-space: nowrap; }
 .reflection-card:hover { border-color: var(--line-hot); color: var(--text); transform: translateY(-1px); }
 .reflection-card:disabled { cursor: not-allowed; opacity: 0.52; transform: none; }
