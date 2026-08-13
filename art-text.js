@@ -37,7 +37,7 @@
     rose: "./assets/reflection-fields/rose-citadel.webp?v=2",
     arctic: "./assets/reflection-fields/ice-citadel.webp?v=3",
     sunset: "./assets/reflection-fields/solar-obsidian.webp?v=3",
-    prism: "./assets/reflection-fields/prism-spectrum.webp?v=6",
+    prism: "./assets/reflection-fields/prism-spectrum-balanced.webp?v=1",
     neon: "./assets/reflection-fields/neon-monsoon.webp?v=2",
   });
   const PRESET_SETTING_KEYS = Object.freeze([...new Set(
