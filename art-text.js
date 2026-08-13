@@ -24,6 +24,7 @@
     arctic: "ICE CITADEL",
     sunset: "SOLAR OBSIDIAN",
     prism: "PRISM MERCURY",
+    neon: "NEON MONSOON",
     custom: "CUSTOM URL",
   });
   const REFLECTION_SOURCES = Object.freeze({
@@ -31,6 +32,10 @@
     arctic: "./assets/reflection-fields/ice-citadel.webp?v=3",
     sunset: "./assets/reflection-fields/solar-obsidian.webp?v=3",
     prism: "./assets/reflection-fields/prism-spectrum.webp?v=3",
+    neon: "./assets/reflection-fields/neon-monsoon.webp?v=1",
+  });
+  const REFLECTION_TEXTURE_ASPECTS = Object.freeze({
+    neon: 2,
   });
   const PRESET_SETTING_KEYS = Object.freeze([...new Set(
     PRESET_ORDER.flatMap((key) => Object.keys(PRESETS[key].settings)),
@@ -1307,6 +1312,7 @@
       url,
       signature: `builtin:${styleKey}:${url}`,
       custom: false,
+      textureAspect: REFLECTION_TEXTURE_ASPECTS[styleKey] || 1,
     };
   }
 
@@ -1354,10 +1360,10 @@
     });
   }
 
-  function normalizeReflectionImage(image) {
+  function normalizeReflectionImage(image, textureAspect = 1) {
     const canvas = document.createElement("canvas");
     canvas.width = REFLECTION_FIELD_WIDTH;
-    canvas.height = REFLECTION_FIELD_HEIGHT;
+    canvas.height = Math.round(REFLECTION_FIELD_HEIGHT / textureAspect);
     const context = canvas.getContext("2d", { alpha: false });
     context.fillStyle = "#000";
     context.fillRect(0, 0, canvas.width, canvas.height);
@@ -1393,7 +1399,10 @@
     }
     let pending;
     pending = loadReflectionImage(descriptor)
-      .then((image) => ({ ...descriptor, canvas: normalizeReflectionImage(image) }))
+      .then((image) => ({
+        ...descriptor,
+        canvas: normalizeReflectionImage(image, descriptor.textureAspect),
+      }))
       .catch((error) => {
         if (reflectionFieldCache.get(descriptor.signature) === pending) {
           reflectionFieldCache.delete(descriptor.signature);
