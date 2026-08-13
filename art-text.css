@@ -127,8 +127,8 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
 .surface-switcher { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
 .surface-button {
   min-width: 0;
-  min-height: 46px;
-  padding: 7px 4px;
+  padding: 0;
+  overflow: hidden;
   border: 1px solid var(--line);
   border-radius: 4px;
   color: var(--muted);
@@ -137,11 +137,22 @@ button:focus-visible, input:focus-visible, textarea:focus-visible {
   text-align: center;
   transition: 150ms ease-out;
 }
-.surface-button b, .surface-button span { display: block; overflow: hidden; text-overflow: ellipsis; }
+.surface-preview {
+  display: block;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+  background: #08070b;
+}
+.surface-preview img { display: block; width: 100%; height: 100%; object-fit: cover; opacity: 0.72; filter: saturate(0.88) brightness(0.84); transition: 150ms ease-out; }
+.surface-copy { display: block; padding: 7px 4px; }
+.surface-button b, .surface-copy span { display: block; overflow: hidden; text-overflow: ellipsis; }
 .surface-button b { color: var(--text); font-size: 10px; letter-spacing: 0.05em; }
-.surface-button span { margin-top: 4px; font-size: 8px; }
+.surface-copy span { margin-top: 4px; font-size: 8px; }
 .surface-button:hover { border-color: var(--line-hot); color: var(--text); }
+.surface-button:hover .surface-preview img { opacity: 0.9; filter: saturate(1) brightness(0.94); transform: scale(1.025); }
 .surface-button.is-active { border-color: var(--cyan); color: var(--cyan); background: rgba(57,245,255,0.055); box-shadow: inset 0 0 0 1px rgba(57,245,255,0.12); }
+.surface-button.is-active .surface-preview img { opacity: 1; filter: none; }
 
 .reflection-library, .asset-library { margin-top: 18px; }
 .asset-library-title { display: flex; align-items: flex-end; justify-content: space-between; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
