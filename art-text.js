@@ -537,21 +537,21 @@
 
       // Sparse, taller slices read as intentional signal tears instead of a
       // fine per-row wobble. The glyph id keeps every split deterministic.
-      float sliceHeight = mix(22.0, 12.0, strength);
+      float sliceHeight = mix(26.0, 12.0, strength);
       float sliceRow = floor((localPx.y + 4096.0) / sliceHeight);
       float sliceNoise = hash21(vec2(idByte * 1.17, sliceRow));
-      float tearGate = step(mix(0.985, 0.82, strength), sliceNoise);
+      float tearGate = step(mix(0.992, 0.82, strength), sliceNoise);
       float tearDirection = hash21(vec2(sliceRow, idByte * 2.31)) * 2.0 - 1.0;
-      float tearPx = tearDirection * mix(4.0, 25.0, strength) * tearGate;
+      float tearPx = tearDirection * mix(5.0, 32.0, strength) * tearGate;
 
       // Most dropped rows only remove the cyan face, revealing the persistent
       // magenta underprint. A few hard drops expose the background entirely.
-      float lineHeight = max(2.5, pitch * 0.46);
+      float lineHeight = max(2.2, pitch * 0.38);
       float lineRow = floor((localPx.y + 2048.0) / lineHeight);
       float lineNoise = hash21(vec2(idByte * 4.13, lineRow));
-      float frontDrop = step(mix(0.998, 0.94, strength), lineNoise);
+      float frontDrop = step(mix(0.998, 0.925, strength), lineNoise);
       float hardDrop = step(
-        mix(0.9995, 0.985, strength),
+        mix(0.9995, 0.978, strength),
         hash21(vec2(idByte * 7.91, lineRow + 31.0))
       );
 
@@ -563,13 +563,13 @@
       float core = tornFill * dots * (1.0 - frontDrop) * (1.0 - hardDrop);
 
       float cyanMisregister = safeFillAt(
-        uv - vec2(3.0, -1.0) / uTextureSize,
+        uv - vec2(mix(2.0, 5.5, strength), -1.0) / uTextureSize,
         id,
         aa
       ) * dots * (1.0 - hardDrop);
 
       float pinkTear = safeFillAt(
-        uv - vec2((tearPx + 7.0) / uTextureSize.x, 0.0),
+        uv - vec2((tearPx + mix(6.0, 11.0, strength)) / uTextureSize.x, 0.0),
         id,
         aa
       ) * dots * tearGate * (1.0 - hardDrop);
@@ -582,20 +582,84 @@
       ) * (1.0 - hardDrop);
       float underprint = underprintFill * mix(0.66, 1.0, dots);
 
+      // A second, deeper ID-gated plate makes the magenta offset read as an
+      // extrusion rather than a soft glow. It can only occupy this glyph's
+      // padded cell because every displaced tap is checked by safeFillAt.
+      float deepUnderprintFill = safeFillAt(
+        uv + underprintOffset * 1.58 / uTextureSize,
+        id,
+        aa
+      ) * (1.0 - hardDrop);
+      float deepUnderprint = deepUnderprintFill * mix(0.52, 0.84, dots);
+
+      // Independent sparse carrier rows create long signal trails. Four
+      // ID-safe taps bridge a displaced slice into a broken horizontal streak
+      // while padding prevents it from ever borrowing a neighbouring glyph.
+      float carrierHeight = mix(4.2, 2.6, strength);
+      float carrierRow = floor((uv.y * uTextureSize.y + 8192.0) / carrierHeight);
+      float carrierSeed = hash21(vec2(carrierRow * 0.731, 17.0));
+      float carrierGate = step(mix(0.998, 0.905, strength), carrierSeed);
+      float carrierDirection = step(
+        0.5,
+        hash21(vec2(carrierRow * 1.91, 53.0))
+      ) * 2.0 - 1.0;
+      float carrierLength = carrierDirection
+        * mix(18.0, 68.0, strength)
+        * mix(0.72, 1.0, hash21(vec2(carrierRow + 9.0, 31.0)));
+      float carrierA = safeFillAt(
+        uv - vec2(carrierLength * 0.25 / uTextureSize.x, 0.0),
+        id,
+        aa
+      );
+      float carrierB = safeFillAt(
+        uv - vec2(carrierLength * 0.50 / uTextureSize.x, 0.0),
+        id,
+        aa
+      );
+      float carrierC = safeFillAt(
+        uv - vec2(carrierLength * 0.75 / uTextureSize.x, 0.0),
+        id,
+        aa
+      );
+      float carrierD = safeFillAt(
+        uv - vec2(carrierLength / uTextureSize.x, 0.0),
+        id,
+        aa
+      );
+      float carrierFill = max(max(carrierA, carrierB), max(carrierC, carrierD));
+      float carrierDash = mix(
+        0.38,
+        1.0,
+        step(0.32, hash21(vec2(floor(uv.x * uTextureSize.x / 8.0), carrierRow)))
+      );
+      float signalTrail = carrierFill * carrierGate * carrierDash * (1.0 - hardDrop);
+      float signalHead = carrierD * carrierGate * (1.0 - hardDrop);
+
       float microCell = hash21(vec2(
         idByte + floor(localPx.x / pitch),
         floor(localPx.y / pitch)
       ));
       vec3 coreColor = mix(uCyan, vec3(0.94, 1.0, 1.0), step(0.91, microCell) * 0.28);
 
-      float alpha = underprint * 0.86;
-      vec3 premultiplied = uPink * alpha;
+      float alpha = deepUnderprint * 0.52;
+      vec3 premultiplied = mix(vec3(0.28, 0.0, 0.52), uPink, 0.72) * alpha;
+      float underprintAlpha = underprint * 0.88;
+      premultiplied = uPink * underprintAlpha + premultiplied * (1.0 - underprintAlpha);
+      alpha = underprintAlpha + alpha * (1.0 - underprintAlpha);
       float cyanAlpha = cyanMisregister * 0.24;
       premultiplied = uCyan * cyanAlpha + premultiplied * (1.0 - cyanAlpha);
       alpha = cyanAlpha + alpha * (1.0 - cyanAlpha);
       float tearAlpha = pinkTear * 0.66;
       premultiplied = uPink * tearAlpha + premultiplied * (1.0 - tearAlpha);
       alpha = tearAlpha + alpha * (1.0 - tearAlpha);
+
+      float pinkTrailAlpha = signalTrail * mix(0.18, 0.48, strength);
+      premultiplied = uPink * pinkTrailAlpha + premultiplied * (1.0 - pinkTrailAlpha);
+      alpha = pinkTrailAlpha + alpha * (1.0 - pinkTrailAlpha);
+      float cyanTrailAlpha = signalHead * mix(0.12, 0.38, strength);
+      premultiplied = uCyan * cyanTrailAlpha + premultiplied * (1.0 - cyanTrailAlpha);
+      alpha = cyanTrailAlpha + alpha * (1.0 - cyanTrailAlpha);
+
       premultiplied = coreColor * core + premultiplied * (1.0 - core);
       alpha = core + alpha * (1.0 - core);
 
