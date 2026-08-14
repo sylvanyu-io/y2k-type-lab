@@ -14,7 +14,6 @@
   const DEFAULT_GLYPH_TRANSFORM = Object.freeze({ x: 0, y: 0, rotation: 0, scale: 1 });
   const GLYPH_HANDLE_OFFSET_CSS = 28;
   const GLYPH_HANDLE_RADIUS_CSS = 12;
-  const GLYPH_GESTURE_BAKE_INTERVAL = 32;
   // Keep the editor hit-test and the DOT presentation shader on one mapping.
   const DOT_PERSPECTIVE_MAX = 90;
   const DOT_PERSPECTIVE_TOP_SCALE = 0.664;
@@ -2236,20 +2235,13 @@
   let glyphGesture = null;
   let gestureBakeTimer = 0;
   function scheduleGestureBake() {
-    // Throttle instead of debounce: a held drag keeps producing fresh merged
-    // bakes, while the expensive 1600x900 EDT still runs at most one at a time.
-    if (gestureBakeTimer) return;
-    window.clearTimeout(rebuildTimer);
-    window.clearTimeout(normalBakeTimer);
-    rebuildTimer = 0;
-    normalBakeTimer = 0;
-    geometryRebuildPending = false;
+    window.clearTimeout(gestureBakeTimer);
     ui.renderStatus.textContent = "WAITING FOR GLYPH BAKE";
     gestureBakeTimer = window.setTimeout(() => {
       gestureBakeTimer = 0;
       if (!glyphGesture || glyphGesture.revision === glyphGesture.bakedRevision) return;
-      rebuildTextures();
-    }, GLYPH_GESTURE_BAKE_INTERVAL);
+      scheduleRebuild();
+    }, 90);
   }
 
   function scheduleFinalGestureBake() {
