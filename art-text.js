@@ -932,7 +932,9 @@
       // Outside the merged union, preserve the original SDF ring exactly.
       // The baked painter-order mask is only needed where an earlier glyph's
       // face would otherwise erase the later glyph's internal overlap edge.
-      float outerRing = max(max(expanded - fill, 0.0), glyphOutline * fill);
+      float mergedOuterRing = max(expanded - fill, 0.0);
+      float overlapOuterRing = glyphOutline * fill;
+      float internalOnlyRing = max(overlapOuterRing - mergedOuterRing, 0.0);
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
       posterChrome *= mix(1.0, 0.66, dropout);
@@ -942,7 +944,8 @@
       vec3 premultiplied = posterChrome * fill;
       premultiplied += vec3(1.0, 0.08, 0.48) * redGhost * dropout * 0.34;
       premultiplied += vec3(0.04, 0.92, 1.0) * cyanGhost * dropout * 0.38;
-      premultiplied += mix(uPink, uCyan, signalSeed) * outerRing * 0.72;
+      premultiplied += mix(uPink, uCyan, signalSeed) * mergedOuterRing * 0.72;
+      premultiplied += mix(uPink, uCyan, 0.381966) * internalOnlyRing * 0.72;
       float alpha = clamp(max(expanded, max(redGhost, cyanGhost) * dropout), 0.0, 1.0);
       return vec4(premultiplied, alpha);
     }
