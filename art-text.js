@@ -5,6 +5,8 @@
   const TEXTURE_HEIGHT = 900;
   const SDF_SPREAD = 72;
   const SHADING_SDF_SPREAD = 24;
+  const VHS_OUTLINE_DISTANCE = 4.5;
+  const VHS_OUTLINE_AA = 2.1;
   const BODY_INFLATE = 3.5;
   const FACE_CURVE_REFERENCE_CROWN = 16;
   // BODY and FACE are independent height sources. Give each its own slope
@@ -317,14 +319,14 @@
       );
     }
 
-    vec2 shapeTap(vec2 uv) {
+    vec3 shapeTap(vec2 uv) {
       vec4 packedShape = texture(uShapeTexture, uv);
       vec2 heightBytes = floor(packedShape.rg * 255.0 + 0.5);
       float bodyHeight = (heightBytes.x * 256.0 + heightBytes.y) / 65535.0;
-      return vec2(bodyHeight, packedShape.b);
+      return vec3(bodyHeight, packedShape.b, packedShape.a);
     }
 
-    vec2 sampleShapeData16(vec2 uv) {
+    vec3 sampleShapeData16(vec2 uv) {
       vec2 pixel = uv * uTextureSize - 0.5;
       vec2 base = floor(pixel);
       vec2 fraction = fract(pixel);
@@ -912,6 +914,7 @@
       float surfaceD,
       float fill,
       float aa,
+      float glyphOutline,
       vec3 chrome
     ) {
       float line = floor((signalLocalPx.y + 2048.0) / 3.0);
@@ -926,7 +929,10 @@
       );
 
       float expanded = smoothstep(-4.5 - aa, -4.5 + aa, surfaceD);
-      float outerRing = max(expanded - fill, 0.0);
+      // Outside the merged union, preserve the original SDF ring exactly.
+      // The baked painter-order mask is only needed where an earlier glyph's
+      // face would otherwise erase the later glyph's internal overlap edge.
+      float outerRing = max(max(expanded - fill, 0.0), glyphOutline * fill);
       float chromeLuma = dot(chrome, vec3(0.2126, 0.7152, 0.0722));
       vec3 posterChrome = mix(vec3(chromeLuma), chrome, 1.28);
       posterChrome *= mix(1.0, 0.66, dropout);
@@ -1017,7 +1023,7 @@
         return;
       ` : ""}
 
-      vec2 centerShape = sampleShapeData16(uv);
+      vec3 centerShape = sampleShapeData16(uv);
       // The complete crown + continuous face curve + edge roll is baked into
       // one normal texture. Runtime cost stays at one filtered normal lookup.
       vec3 bakedNormal = sampleNormalMap(uv);
@@ -1149,6 +1155,7 @@
           surfaceD,
           fill,
           aa,
+          centerShape.z,
           chrome
         );
         color = color * (1.0 - vhsMaterial.a) + vhsMaterial.rgb;
@@ -2657,6 +2664,7 @@
   function createGlyphNormalBake(glyphs, bodySigma, faceSigma) {
     const pixelCount = TEXTURE_WIDTH * TEXTURE_HEIGHT;
     const ownerIds = new Uint8Array(pixelCount);
+    const outlinePixels = new Uint8Array(pixelCount);
     const ownerIsSurface = new Uint8Array(pixelCount);
     const ownerDistance = new Float32Array(pixelCount);
     ownerDistance.fill(-Infinity);
@@ -2706,8 +2714,27 @@
         for (let x = 0; x < width; x += 1) {
           const localPixel = y * width + x;
           const surfaceDistance = signedField[localPixel] + BODY_INFLATE;
-          if (surfaceDistance < -4) continue;
+          if (surfaceDistance < -(VHS_OUTLINE_DISTANCE + VHS_OUTLINE_AA)) continue;
           const pixel = (top + y) * TEXTURE_WIDTH + left + x;
+          const expandedT = Math.max(0, Math.min(
+            1,
+            (surfaceDistance + VHS_OUTLINE_DISTANCE + VHS_OUTLINE_AA) / (2 * VHS_OUTLINE_AA),
+          ));
+          const fillT = Math.max(
+            0,
+            Math.min(1, (surfaceDistance + VHS_OUTLINE_AA) / (2 * VHS_OUTLINE_AA)),
+          );
+          const expanded = expandedT * expandedT * (3 - 2 * expandedT);
+          const localFill = fillT * fillT * (3 - 2 * fillT);
+          const outline = Math.max(expanded - localFill, 0);
+          // Alpha-over the later glyph's ring while its expanded coverage
+          // occludes earlier rings. This preserves AA intersections and makes
+          // a solid foreground face clear every outline behind it.
+          const previousOutline = outlinePixels[pixel] / 255;
+          outlinePixels[pixel] = Math.round(
+            Math.min(1, outline + previousOutline * (1 - expanded)) * 255,
+          );
+          if (surfaceDistance < -4) continue;
           if (surfaceDistance >= 0) {
             // Canvas painter order defines the visible surface: a later glyph
             // replaces an earlier glyph only where its own inflated face exists.
@@ -2724,7 +2751,7 @@
       }
     });
 
-    return { layers, ownerIds };
+    return { layers, ownerIds, outlinePixels };
   }
 
   function createSemanticIdPixels(alphaPixels, glyphs, ownerIds) {
@@ -2867,7 +2894,7 @@
       shapePixels[index] = 0;
       shapePixels[index + 1] = 0;
       shapePixels[index + 2] = alphaPixels[index + 3];
-      shapePixels[index + 3] = 255;
+      shapePixels[index + 3] = 0;
       normalPixels[index] = 128;
       normalPixels[index + 1] = 128;
       normalPixels[index + 2] = 255;
@@ -2888,8 +2915,14 @@
       : {
         layers: [],
         ownerIds: new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT),
+        outlinePixels: new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT),
       };
-    cachedNormalBake = glyphNormalBake;
+    // Outline alpha is uploaded with the shape texture and is not needed by
+    // BODY/FACE/EDGE normal-only rebakes, so keep it out of the long-lived cache.
+    cachedNormalBake = {
+      layers: glyphNormalBake.layers,
+      ownerIds: glyphNormalBake.ownerIds,
+    };
     const idPixels = createSemanticIdPixels(
       alphaPixels,
       state.glyphs,
@@ -2943,6 +2976,7 @@
           distancePixels[outputIndex + 3] = shadingDistance16 & 255;
           shapePixels[outputIndex] = bodyHeight16 >> 8;
           shapePixels[outputIndex + 1] = bodyHeight16 & 255;
+          shapePixels[outputIndex + 3] = glyphNormalBake.outlinePixels[localIndex];
         }
       }
     }
