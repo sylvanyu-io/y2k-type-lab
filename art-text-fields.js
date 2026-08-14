@@ -294,8 +294,9 @@
     const idealWidth = Math.sqrt((12 * sigma * sigma) / passes + 1);
     const radius = Math.max(1, Math.round((idealWidth - 1) * 0.5));
 
-    // One artwork-wide coverage field makes close or overlapping glyphs one
-    // continuous baked surface. No per-glyph owner rectangle participates.
+    // Blur the supplied coverage as one continuous field. Callers may provide
+    // either the merged artwork or an isolated glyph ROI; no owner cell is
+    // encoded into the field itself.
     for (let index = 0; index < pixelCount; index += 1) {
       field[index] = alphaPixels[index * 4 + 3] / 255;
     }

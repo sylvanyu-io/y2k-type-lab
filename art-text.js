@@ -2425,6 +2425,39 @@
     }
   }
 
+  function createSignedDistanceField(alphaPixels, width, height) {
+    const length = width * height;
+    const outer = new Float64Array(length);
+    const inner = new Float64Array(length);
+    for (let pixel = 0; pixel < length; pixel += 1) {
+      const alpha = alphaPixels[pixel * 4 + 3] / 255;
+      if (alpha >= 1) {
+        outer[pixel] = 0;
+        inner[pixel] = INF;
+      } else if (alpha <= 0) {
+        outer[pixel] = INF;
+        inner[pixel] = 0;
+      } else {
+        outer[pixel] = Math.pow(Math.max(0, 0.5 - alpha), 2);
+        inner[pixel] = Math.pow(Math.max(0, alpha - 0.5), 2);
+      }
+    }
+    edt2d(outer, width, height);
+    edt2d(inner, width, height);
+    const signedField = new Float32Array(length);
+    for (let pixel = 0; pixel < length; pixel += 1) {
+      signedField[pixel] = Math.sqrt(inner[pixel]) - Math.sqrt(outer[pixel]);
+    }
+    return signedField;
+  }
+
+  function bodyHeightBlurSupport(sigma) {
+    const passes = 3;
+    const idealWidth = Math.sqrt((12 * sigma * sigma) / passes + 1);
+    const radius = Math.max(1, Math.round((idealWidth - 1) * 0.5));
+    return radius * passes;
+  }
+
   function encodeNormalized16(value) {
     const packed = Math.round(Math.max(0, Math.min(1, value)) * 65535);
     return [packed >> 8, packed & 255];
@@ -2534,6 +2567,40 @@
     }
   }
 
+  function writeGlyphNormalLayers(layers, ownerIds, normalPixels) {
+    layers.forEach((layer) => {
+      const layerNormals = new Uint8Array(layer.width * layer.height * 4);
+      for (let index = 0; index < layerNormals.length; index += 4) {
+        layerNormals[index] = 128;
+        layerNormals[index + 1] = 128;
+        layerNormals[index + 2] = 255;
+        layerNormals[index + 3] = 255;
+      }
+      writeArtworkNormalMap(
+        layer.smoothHeight,
+        layer.faceHeight,
+        layer.shadingField,
+        layerNormals,
+        layer.width,
+        layer.height,
+      );
+      for (let y = 0; y < layer.height; y += 1) {
+        for (let x = 0; x < layer.width; x += 1) {
+          const globalX = layer.left + x;
+          const globalY = layer.top + y;
+          const globalPixel = globalY * TEXTURE_WIDTH + globalX;
+          if (ownerIds[globalPixel] !== layer.idByte) continue;
+          const source = (y * layer.width + x) * 4;
+          const output = globalPixel * 4;
+          normalPixels[output] = layerNormals[source];
+          normalPixels[output + 1] = layerNormals[source + 1];
+          normalPixels[output + 2] = layerNormals[source + 2];
+          normalPixels[output + 3] = 255;
+        }
+      }
+    });
+  }
+
   function uploadNormalMap(normalPixels) {
     drawGeneratedAsset("normal", TEXTURE_WIDTH, TEXTURE_HEIGHT, (output, index, sourceIndex) => {
       const normalX = normalPixels[sourceIndex] / 255 * 2 - 1;
@@ -2576,13 +2643,10 @@
       normalPixels[index + 2] = 255;
       normalPixels[index + 3] = 255;
     }
-    writeArtworkNormalMap(
-      cachedNormalBake.smoothHeight,
-      cachedNormalBake.faceHeight,
-      cachedNormalBake.shadingField,
+    writeGlyphNormalLayers(
+      cachedNormalBake.layers,
+      cachedNormalBake.ownerIds,
       normalPixels,
-      TEXTURE_WIDTH,
-      TEXTURE_HEIGHT,
     );
     uploadNormalMap(normalPixels);
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
@@ -2590,41 +2654,81 @@
     render();
   }
 
-  function createSemanticIdPixels(alphaPixels, glyphs) {
+  function createGlyphNormalBake(glyphs, bodySigma, faceSigma) {
     const pixelCount = TEXTURE_WIDTH * TEXTURE_HEIGHT;
-    const ownerCoverage = new Uint8Array(pixelCount);
-    const semanticIds = new Uint8Array(pixelCount);
+    const ownerIds = new Uint8Array(pixelCount);
+    const ownerIsSurface = new Uint8Array(pixelCount);
+    const ownerDistance = new Float32Array(pixelCount);
+    ownerDistance.fill(-Infinity);
+    const layers = [];
+    const padding = Math.ceil(Math.max(
+      bodyHeightBlurSupport(faceSigma) + 6,
+      SHADING_SDF_SPREAD + 8,
+    ));
     idContext.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     idContext.font = sourceContext.font;
     idContext.textBaseline = "alphabetic";
     idContext.fillStyle = "#ffffff";
 
     glyphs.forEach((record) => {
-      const left = Math.max(0, Math.floor(record.inkLeft) - 8);
-      const top = Math.max(0, Math.floor(record.inkTop) - 8);
-      const right = Math.min(TEXTURE_WIDTH, Math.ceil(record.inkRight) + 8);
-      const bottom = Math.min(TEXTURE_HEIGHT, Math.ceil(record.inkBottom) + 8);
+      const left = Math.max(0, Math.floor(record.inkLeft) - padding);
+      const top = Math.max(0, Math.floor(record.inkTop) - padding);
+      const right = Math.min(TEXTURE_WIDTH, Math.ceil(record.inkRight) + padding);
+      const bottom = Math.min(TEXTURE_HEIGHT, Math.ceil(record.inkBottom) + padding);
       const width = right - left;
       const height = bottom - top;
       if (width <= 0 || height <= 0) return;
 
       idContext.clearRect(left, top, width, height);
       drawGlyphRecord(idContext, record);
-      const mask = idContext.getImageData(left, top, width, height).data;
+      const maskPixels = idContext.getImageData(left, top, width, height).data;
+      const signedField = createSignedDistanceField(maskPixels, width, height);
+      const smoothHeight = createArtworkBodyHeight(maskPixels, width, height, bodySigma);
+      const faceHeight = createArtworkBodyHeight(maskPixels, width, height, faceSigma);
+      const shadingField = createArtworkShadingDistance(
+        signedField,
+        width,
+        height,
+        SHADING_SDF_SPREAD,
+      );
+      layers.push({
+        idByte: record.idByte,
+        left,
+        top,
+        width,
+        height,
+        smoothHeight,
+        faceHeight,
+        shadingField,
+      });
+
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
-          const maskAlpha = mask[(y * width + x) * 4 + 3];
-          if (maskAlpha === 0) continue;
+          const localPixel = y * width + x;
+          const surfaceDistance = signedField[localPixel] + BODY_INFLATE;
+          if (surfaceDistance < -4) continue;
           const pixel = (top + y) * TEXTURE_WIDTH + left + x;
-          // Maximum local coverage gives overlapping glyphs one deterministic,
-          // valid ID without ever blending two integer labels together.
-          if (maskAlpha >= ownerCoverage[pixel]) {
-            ownerCoverage[pixel] = maskAlpha;
-            semanticIds[pixel] = record.idByte;
+          if (surfaceDistance >= 0) {
+            // Canvas painter order defines the visible surface: a later glyph
+            // replaces an earlier glyph only where its own inflated face exists.
+            ownerIds[pixel] = record.idByte;
+            ownerIsSurface[pixel] = 1;
+            ownerDistance[pixel] = surfaceDistance;
+          } else if (!ownerIsSurface[pixel] && surfaceDistance >= ownerDistance[pixel]) {
+            // Outside every real surface, retain the nearest four-pixel halo so
+            // LINEAR normal filtering reaches the silhouette without a flat seam.
+            ownerIds[pixel] = record.idByte;
+            ownerDistance[pixel] = surfaceDistance;
           }
         }
       }
     });
+
+    return { layers, ownerIds };
+  }
+
+  function createSemanticIdPixels(alphaPixels, glyphs, ownerIds) {
+    const pixelCount = TEXTURE_WIDTH * TEXTURE_HEIGHT;
 
     const rotationRById = new Uint8Array(256);
     const rotationBById = new Uint8Array(256);
@@ -2639,7 +2743,7 @@
     const idPixels = new Uint8Array(pixelCount * 4);
     for (let pixel = 0; pixel < pixelCount; pixel += 1) {
       const output = pixel * 4;
-      const idByte = alphaPixels[output + 3] > 0 ? semanticIds[pixel] : 0;
+      const idByte = alphaPixels[output + 3] > 0 ? ownerIds[pixel] : 0;
       // G remains the discrete semantic ID. R/B carry the owning glyph's
       // local rotation so the existing ID lookup also rotates local material
       // coordinates without adding another runtime texture fetch.
@@ -2777,7 +2881,20 @@
         (artworkBottom - artworkTop) / TEXTURE_HEIGHT,
       ]
       : [0.5, 0.5, 0.90, 0.78];
-    const idPixels = createSemanticIdPixels(alphaPixels, state.glyphs);
+    const bodySigma = Math.max(7, Math.min(14, layout.fontSize * 0.018));
+    const faceSigma = bodySigma * 2.25;
+    const glyphNormalBake = state.glyphs.length > 0
+      ? createGlyphNormalBake(state.glyphs, bodySigma, faceSigma)
+      : {
+        layers: [],
+        ownerIds: new Uint8Array(TEXTURE_WIDTH * TEXTURE_HEIGHT),
+      };
+    cachedNormalBake = glyphNormalBake;
+    const idPixels = createSemanticIdPixels(
+      alphaPixels,
+      state.glyphs,
+      glyphNormalBake.ownerIds,
+    );
     latestIdPixels = idPixels;
     const glyphMetadataPixels = createGlyphMetadataPixels(state.glyphs);
 
@@ -2785,51 +2902,16 @@
       const width = TEXTURE_WIDTH;
       const height = TEXTURE_HEIGHT;
       const length = width * height;
-      const outer = new Float64Array(length);
-      const inner = new Float64Array(length);
-      for (let pixel = 0; pixel < length; pixel += 1) {
-          const alpha = alphaPixels[pixel * 4 + 3] / 255;
-          if (alpha >= 1) {
-            outer[pixel] = 0;
-            inner[pixel] = INF;
-          } else if (alpha <= 0) {
-            outer[pixel] = INF;
-            inner[pixel] = 0;
-          } else {
-            outer[pixel] = Math.pow(Math.max(0, 0.5 - alpha), 2);
-            inner[pixel] = Math.pow(Math.max(0, alpha - 0.5), 2);
-          }
-      }
-      edt2d(outer, width, height);
-      edt2d(inner, width, height);
-      const signedField = new Float32Array(length);
-      for (let y = 0; y < height; y += 1) {
-        for (let x = 0; x < width; x += 1) {
-          const localIndex = y * width + x;
-          const signed = Math.sqrt(inner[localIndex]) - Math.sqrt(outer[localIndex]);
-          signedField[localIndex] = signed;
-        }
-      }
+      const signedField = createSignedDistanceField(alphaPixels, width, height);
 
-      // Screened/blurred coverage creates a wide shallow face whose stronger
-      // curvature is confined to the edge band.
-      const bodySigma = Math.max(7, Math.min(14, layout.fontSize * 0.018));
+      // Keep the merged body-height asset for the final single-quad texture
+      // set. Surface normals are composited from independent glyph ROI bakes
+      // below so overlapping letters do not become one fused balloon.
       const smoothHeight = createArtworkBodyHeight(
         alphaPixels,
         width,
         height,
         bodySigma,
-      );
-      // A broader artwork-wide pressure field supplies the face curvature.
-      // Unlike a nearest-edge / propagated-radius tube, this scalar field is
-      // smooth through medial axes and multi-stroke joins, so Y/K/M junctions
-      // cannot bake a skeleton-shaped crease into the normal map.
-      const faceSigma = bodySigma * 2.25;
-      const faceHeight = createArtworkBodyHeight(
-        alphaPixels,
-        width,
-        height,
-        faceSigma,
       );
       const shadingField = createArtworkShadingDistance(
         signedField,
@@ -2837,13 +2919,10 @@
         height,
         SHADING_SDF_SPREAD,
       );
-      writeArtworkNormalMap(
-        smoothHeight,
-        faceHeight,
-        shadingField,
+      writeGlyphNormalLayers(
+        glyphNormalBake.layers,
+        glyphNormalBake.ownerIds,
         normalPixels,
-        width,
-        height,
       );
       for (let y = 0; y < height; y += 1) {
         for (let x = 0; x < width; x += 1) {
@@ -2866,11 +2945,6 @@
           shapePixels[outputIndex + 1] = bodyHeight16 & 255;
         }
       }
-      cachedNormalBake = {
-        smoothHeight,
-        faceHeight,
-        shadingField,
-      };
     }
 
     updateGlyphAssetPreviews(shapePixels, distancePixels, normalPixels, idPixels);
