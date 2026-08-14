@@ -2240,8 +2240,8 @@
     gestureBakeTimer = window.setTimeout(() => {
       gestureBakeTimer = 0;
       if (!glyphGesture || glyphGesture.revision === glyphGesture.bakedRevision) return;
-      scheduleRebuild();
-    }, 90);
+      scheduleFinalGestureBake();
+    }, 80);
   }
 
   function scheduleFinalGestureBake() {
