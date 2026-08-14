@@ -941,7 +941,7 @@
       posterChrome += uCyan * band(signalLocalPx.y / 170.0 + signalSeed, 0.32, 0.16) * 0.14;
       posterChrome += uPink * band(signalLocalPx.y / 180.0 - signalSeed, -0.18, 0.18) * 0.16;
 
-      vec3 premultiplied = posterChrome * fill;
+      vec3 premultiplied = posterChrome * max(fill - internalOnlyRing, 0.0);
       premultiplied += vec3(1.0, 0.08, 0.48) * redGhost * dropout * 0.34;
       premultiplied += vec3(0.04, 0.92, 1.0) * cyanGhost * dropout * 0.38;
       premultiplied += mix(uPink, uCyan, signalSeed) * mergedOuterRing * 0.72;
