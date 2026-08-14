@@ -14,6 +14,7 @@
   const DEFAULT_GLYPH_TRANSFORM = Object.freeze({ x: 0, y: 0, rotation: 0, scale: 1 });
   const GLYPH_HANDLE_OFFSET_CSS = 28;
   const GLYPH_HANDLE_RADIUS_CSS = 12;
+  const GLYPH_GESTURE_BAKE_INTERVAL = 32;
   // Keep the editor hit-test and the DOT presentation shader on one mapping.
   const DOT_PERSPECTIVE_MAX = 90;
   const DOT_PERSPECTIVE_TOP_SCALE = 0.664;
@@ -2235,20 +2236,30 @@
   let glyphGesture = null;
   let gestureBakeTimer = 0;
   function scheduleGestureBake() {
-    window.clearTimeout(gestureBakeTimer);
+    // Throttle instead of debounce: a held drag keeps producing fresh merged
+    // bakes, while the expensive 1600x900 EDT still runs at most one at a time.
+    if (gestureBakeTimer) return;
+    window.clearTimeout(rebuildTimer);
+    window.clearTimeout(normalBakeTimer);
+    rebuildTimer = 0;
+    normalBakeTimer = 0;
+    geometryRebuildPending = false;
+    ui.renderStatus.textContent = "WAITING FOR GLYPH BAKE";
     gestureBakeTimer = window.setTimeout(() => {
       gestureBakeTimer = 0;
-      // Keep the lightweight overlay live during the gesture; the expensive
-      // merged EDT/normal rebuild remains coalesced after pointer activity.
-      scheduleRebuild();
-    }, 90);
+      if (!glyphGesture || glyphGesture.revision === glyphGesture.bakedRevision) return;
+      rebuildTextures();
+    }, GLYPH_GESTURE_BAKE_INTERVAL);
   }
 
   function scheduleFinalGestureBake() {
     window.clearTimeout(rebuildTimer);
     window.clearTimeout(normalBakeTimer);
+    rebuildTimer = 0;
+    normalBakeTimer = 0;
     geometryRebuildPending = true;
     rebuildTimer = window.setTimeout(() => {
+      rebuildTimer = 0;
       geometryRebuildPending = false;
       rebuildTextures();
     }, 0);
@@ -2260,12 +2271,16 @@
     const completedGesture = glyphGesture;
     if (gestureBakeTimer) window.clearTimeout(gestureBakeTimer);
     gestureBakeTimer = 0;
+    glyphGesture = null;
     if (completedGesture.captureTarget
+      && typeof completedGesture.captureTarget.hasPointerCapture === "function"
+      && completedGesture.captureTarget.hasPointerCapture(completedGesture.pointerId)
       && typeof completedGesture.captureTarget.releasePointerCapture === "function") {
       completedGesture.captureTarget.releasePointerCapture(completedGesture.pointerId);
     }
-    glyphGesture = null;
-    scheduleFinalGestureBake();
+    if (completedGesture.revision !== completedGesture.bakedRevision) {
+      scheduleFinalGestureBake();
+    }
     announceGlyphTransform(state.glyphs.find((record) => record.key === completedGesture.key));
   }
 
@@ -2284,6 +2299,8 @@
       startAngle: Math.atan2(point.y - pivot.y, point.x - pivot.x),
       startDistance: Math.max(1, Math.hypot(point.x - pivot.x, point.y - pivot.y)),
       captureTarget: event.currentTarget,
+      revision: 0,
+      bakedRevision: 0,
     };
     if (typeof event.currentTarget.setPointerCapture === "function") {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -2311,9 +2328,13 @@
       const distance = Math.hypot(point.x - glyphGesture.pivot.x, point.y - glyphGesture.pivot.y);
       next.scale *= distance / glyphGesture.startDistance;
     }
+    const previousTransform = glyphTransformForKey(record.key);
     const normalized = writeGlyphTransform(record.key, next);
     syncGlyphTransformUi(normalized);
-    scheduleGestureBake();
+    if (!transformsEqual(previousTransform, normalized)) {
+      glyphGesture.revision += 1;
+      scheduleGestureBake();
+    }
     event.preventDefault();
   }
 
@@ -2882,6 +2903,7 @@
     ui.glyphReadout.textContent = `${String(state.glyphs.length).padStart(2, "0")} GLYPHS`;
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
     ui.renderStatus.textContent = "BAKE READY";
+    if (glyphGesture) glyphGesture.bakedRevision = glyphGesture.revision;
     syncGlyphTransformUi();
     render();
   }
@@ -3041,9 +3063,11 @@
   function scheduleRebuild() {
     window.clearTimeout(rebuildTimer);
     window.clearTimeout(normalBakeTimer);
+    normalBakeTimer = 0;
     ui.renderStatus.textContent = "WAITING FOR INPUT";
     geometryRebuildPending = true;
     rebuildTimer = window.setTimeout(() => {
+      rebuildTimer = 0;
       geometryRebuildPending = false;
       rebuildTextures();
     }, 140);
@@ -3053,7 +3077,10 @@
     if (geometryRebuildPending) return;
     window.clearTimeout(normalBakeTimer);
     ui.renderStatus.textContent = "WAITING FOR NORMAL BAKE";
-    normalBakeTimer = window.setTimeout(rebuildNormalTexture, 80);
+    normalBakeTimer = window.setTimeout(() => {
+      normalBakeTimer = 0;
+      rebuildNormalTexture();
+    }, 80);
   }
 
   function setDebugView(debugId) {
