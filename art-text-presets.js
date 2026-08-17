@@ -58,7 +58,7 @@
         dotPitch: 12,
         dotOutlineLayers: 4,
         glitchStrength: 82,
-        perspectiveAngle: 52,
+        perspectiveAngle: 30,
         vhsScanlineSpacing: 8,
         vhsScanlineStrength: 10,
         extrusion: 76,
