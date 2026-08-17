@@ -1,0 +1,36 @@
+{
+  "version": 5,
+  "source": "art-text.html WebGL canvas",
+  "composition": "straight-centered",
+  "capture": {
+    "viewport": [1280, 720],
+    "squareCrop": [435, 212, 319, 319],
+    "output": [512, 512],
+    "webpQuality": 84
+  },
+  "covers": {
+    "vhs": {
+      "file": "vhs-chrome-square.webp",
+      "text": "VHS\nERA",
+      "tracking": -5,
+      "lineHeight": 0.95,
+      "perspectiveAngle": 0,
+      "reflectionStyle": "rose"
+    },
+    "dot": {
+      "file": "dot-glitch-square.webp",
+      "text": "SYS\nERR",
+      "tracking": -7,
+      "lineHeight": 0.93,
+      "perspectiveAngle": 90
+    },
+    "liquid": {
+      "file": "liquid-chrome-square.webp",
+      "text": "Y2K\nACID",
+      "tracking": -8,
+      "lineHeight": 1.08,
+      "perspectiveAngle": 0,
+      "reflectionStyle": "neon"
+    }
+  }
+}
