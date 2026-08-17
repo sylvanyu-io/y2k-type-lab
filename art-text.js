@@ -16,12 +16,22 @@
   const DEFAULT_GLYPH_TRANSFORM = Object.freeze({ x: 0, y: 0, rotation: 0, scale: 1 });
   const GLYPH_HANDLE_OFFSET_CSS = 28;
   const GLYPH_HANDLE_RADIUS_CSS = 12;
-  // Keep the editor hit-test and the DOT presentation shader on one mapping.
-  const DOT_PERSPECTIVE_MAX = 90;
-  const DOT_PERSPECTIVE_TOP_SCALE = 0.664;
+  const GLYPH_HANDLE_OFFSET_MOBILE_CSS = 34;
+  const GLYPH_HANDLE_RADIUS_MOBILE_CSS = 20;
+  const GLYPH_HANDLE_HIT_RADIUS_MOBILE_CSS = 22;
+  const MOBILE_EDITOR_QUERY = "(max-width: 679px)";
+  // Keep final presentation and editor hit-testing on one shared mapping.
+  const PERSPECTIVE_MAX = 120;
+  const PERSPECTIVE_TOP_SCALE = 0.552;
+  const DOT_CONTOUR_PIXEL_PX = 14;
+  const DOT_FONT_WEIGHT = 500;
+  const MAX_TEXT_LENGTH = 36;
+  const MAX_TEXT_LINES = 3;
+  const MAX_GLYPHS_PER_LINE = 18;
   const INF = 1e20;
   const DISPLAY_FONT = '"Arial Rounded MT Bold", "Yuanti SC", "Hiragino Maru Gothic ProN", "Avenir Next", "PingFang SC", sans-serif';
-  const DOT_DISPLAY_FONT = '"Arial Black", "Impact", "Arial Narrow Bold", "PingFang SC", sans-serif';
+  const DOT_FONT_FAMILY = "Tektur DOT";
+  const DOT_DISPLAY_FONT = `"${DOT_FONT_FAMILY}", "Arial Black", "Impact", "PingFang SC", sans-serif`;
   const DEBUG_SURFACE = new URLSearchParams(window.location.search).get("debug") || "";
   const {
     createArtworkBodyHeight,
@@ -558,6 +568,24 @@
       return destinationUv;
     }
 
+    vec2 dotContourUv(vec2 sourceUv) {
+      // Pixelate only the DOT silhouette lookup. Keeping the unquantized UV
+      // for dotCell below preserves the circular dots and their even pitch.
+      float blockPx = ${DOT_CONTOUR_PIXEL_PX.toFixed(1)};
+      vec2 localPx = (sourceUv - uArtworkBounds.xy) * uTextureSize;
+      vec2 snappedPx = (floor(localPx / blockPx) + 0.5) * blockPx;
+      return uArtworkBounds.xy + snappedPx / uTextureSize;
+    }
+
+    float dotContourDistancePx(vec2 sourceUv) {
+      return mergedRawDistancePx(dotContourUv(sourceUv));
+    }
+
+    float dotContourFillAt(vec2 sourceUv) {
+      float distancePx = dotContourDistancePx(sourceUv) + ${BODY_INFLATE.toFixed(1)};
+      return smoothstep(-1.15, 1.15, distancePx);
+    }
+
     vec4 dotGlitchMaterial(vec2 uv) {
       float strength = uGlitchStrength;
       float glitchFade = smoothstep(0.0, 0.08, strength);
@@ -646,8 +674,8 @@
       // Keep the displaced face distance available for the dot mask. The
       // magenta separator is built from actual extrusion plates below, not an
       // isotropic SDF outline around this face.
-      float tornDistance = mergedRawDistancePx(sourceUv) + ${BODY_INFLATE.toFixed(1)};
-      float tornAA = max(1.65, fwidth(tornDistance) * 1.35);
+      float tornDistance = dotContourDistancePx(sourceUv) + ${BODY_INFLATE.toFixed(1)};
+      float tornAA = 1.15;
       float tornFill = smoothstep(-tornAA, tornAA, tornDistance);
 
       vec2 materialLocalPx = (sourceUv - uArtworkBounds.xy) * uTextureSize;
@@ -660,13 +688,13 @@
       float core = tornFill * dots * (1.0 - frontDrop) * (1.0 - hardDrop);
       float coreHalo = tornFill * dotHalo * (1.0 - frontDrop) * (1.0 - hardDrop);
 
-      float cyanMisregister = mergedFillAt(
+      float cyanMisregister = dotContourFillAt(
         dotMaterialSourceUv(
           uv - vec2(mix(2.0, 5.5, strength), -1.0) / uTextureSize
         )
       ) * dots * (1.0 - hardDrop);
 
-      float blueTear = mergedFillAt(
+      float blueTear = dotContourFillAt(
         dotMaterialSourceUv(
           uv - vec2(
             (tearPx - tearDirection * mix(9.0, 21.0, strength)) / uTextureSize.x,
@@ -713,7 +741,7 @@
           0.42,
           hash21(layerGlitchSeed + vec2(347.0, 191.0))
         );
-        float layerFill = mergedFillAt(layerSourceUv) * (1.0 - layerHardDrop);
+        float layerFill = dotContourFillAt(layerSourceUv) * (1.0 - layerHardDrop);
         float layerPulse = mod(float(layer), 2.0);
         // A layer-local dropout produces black voids inside the volume instead
         // of cutting every depth plate with the same vertical column.
@@ -734,14 +762,14 @@
         // Keep the far underside dark cobalt and bring violet forward toward
         // the face. The former ordering put the brightest violet on the most
         // exposed rear plate, turning the whole base into one flat purple slab.
-        vec3 deepBlue = vec3(0.006, 0.004, 0.40) + uCyan * 0.004;
-        vec3 violet = vec3(0.18, 0.008, 0.70);
+        vec3 deepBlue = vec3(0.008, 0.006, 0.44) + uCyan * 0.004;
+        vec3 violet = vec3(0.20, 0.010, 0.77);
         float farPlate = smoothstep(0.54, 1.0, depthAmount);
         vec3 plateBody = mix(violet, deepBlue, farPlate);
 
         // Dark troughs separate the plates. A narrow silhouette lip then
         // restores the electric-blue/violet edge without another SDF lookup.
-        plateBody *= mix(0.38, 1.10, depthRidge);
+        plateBody *= mix(0.40, 1.18, depthRidge);
         float plateLip = clamp(4.0 * layerFill * (1.0 - layerFill), 0.0, 1.0);
         vec3 lipColor = mix(
           vec3(0.018, 0.050, 0.94),
@@ -844,16 +872,16 @@
         hash21(carrierCell + vec2(109.0, 419.0))
       ) * 2.0 - 1.0;
       float carrierLength = carrierDirection * carrierMagnitude * strength;
-      float carrierA = mergedFillAt(dotMaterialSourceUv(
+      float carrierA = dotContourFillAt(dotMaterialSourceUv(
         uv - vec2(carrierLength * 0.25 / uTextureSize.x, 0.0)
       ));
-      float carrierB = mergedFillAt(dotMaterialSourceUv(
+      float carrierB = dotContourFillAt(dotMaterialSourceUv(
         uv - vec2(carrierLength * 0.50 / uTextureSize.x, 0.0)
       ));
-      float carrierC = mergedFillAt(dotMaterialSourceUv(
+      float carrierC = dotContourFillAt(dotMaterialSourceUv(
         uv - vec2(carrierLength * 0.75 / uTextureSize.x, 0.0)
       ));
-      float carrierD = mergedFillAt(dotMaterialSourceUv(
+      float carrierD = dotContourFillAt(dotMaterialSourceUv(
         uv - vec2(carrierLength / uTextureSize.x, 0.0)
       ));
       float carrierFill = max(max(carrierA, carrierB), max(carrierC, carrierD));
@@ -965,8 +993,8 @@
       if (uMaterialMode > 0.5 && uMaterialMode < 1.5) {
         vec4 dotMaterial = dotGlitchMaterial(uv);
         vec2 dotFaceUv = dotMaterialSourceUv(uv);
-        float dotFaceD = mergedRawDistancePx(dotFaceUv) + ${BODY_INFLATE.toFixed(1)};
-        float dotFaceAA = max(1.65, fwidth(dotFaceD) * 1.35);
+        float dotFaceD = dotContourDistancePx(dotFaceUv) + ${BODY_INFLATE.toFixed(1)};
+        float dotFaceAA = 1.15;
         float dotFaceFill = smoothstep(-dotFaceAA, dotFaceAA, dotFaceD);
         float blueRimFill = smoothstep(-4.0 - dotFaceAA, -4.0 + dotFaceAA, dotFaceD);
         float navyRimFill = smoothstep(-10.0 - dotFaceAA, -10.0 + dotFaceAA, dotFaceD);
@@ -1177,6 +1205,34 @@
     }
   `;
 
+  const perspectiveShaderFunctions = `
+    float perspectiveRowScale(float visualY) {
+      float perspective = clamp(uPerspectiveAngle / ${PERSPECTIVE_MAX.toFixed(1)}, 0.0, 1.0);
+      float topScale = mix(1.0, ${PERSPECTIVE_TOP_SCALE.toFixed(3)}, perspective);
+      float perspectiveRow = clamp((visualY - 0.05) / 0.90, 0.0, 1.0);
+      return mix(1.0, topScale, perspectiveRow);
+    }
+
+    vec2 perspectiveSourceUv(vec2 destinationUv, out float inside, out float rowScale) {
+      float perspective = clamp(uPerspectiveAngle / ${PERSPECTIVE_MAX.toFixed(1)}, 0.0, 1.0);
+      rowScale = perspectiveRowScale(destinationUv.y);
+      float sourceX = 0.5 + (destinationUv.x - 0.5) / max(rowScale, 0.01);
+      float edgeDistance = 0.5 * rowScale - abs(destinationUv.x - 0.5);
+      float edgeAA = max(fwidth(edgeDistance), 1.0 / uSceneSize.x);
+      inside = perspective < 0.0001
+        ? 1.0
+        : smoothstep(-edgeAA, edgeAA, edgeDistance);
+      return vec2(sourceX, destinationUv.y);
+    }
+
+    vec3 perspectiveBackdrop(vec2 destinationUv) {
+      float inset = 2.0 / uSceneSize.x;
+      vec3 leftEdge = texture(uSceneTexture, vec2(inset, destinationUv.y)).rgb;
+      vec3 rightEdge = texture(uSceneTexture, vec2(1.0 - inset, destinationUv.y)).rgb;
+      return mix(leftEdge, rightEdge, destinationUv.x);
+    }
+  `;
+
   const crtFragmentShaderSource = `#version 300 es
     precision highp float;
 
@@ -1184,8 +1240,11 @@
     layout(location = 0) out vec4 fragColor;
     uniform sampler2D uSceneTexture;
     uniform vec2 uSceneSize;
+    uniform float uPerspectiveAngle;
     uniform float uScanlineSpacing;
     uniform float uScanlineStrength;
+
+    ${perspectiveShaderFunctions}
 
     vec3 toLinear(vec3 color) {
       return pow(max(color, 0.0), vec3(2.2));
@@ -1200,14 +1259,19 @@
     }
 
     vec3 highlightAt(vec2 uv) {
-      vec3 color = toLinear(texture(uSceneTexture, uv).rgb);
+      vec3 color = toLinear(texture(uSceneTexture, clamp(uv, vec2(0.0), vec2(1.0))).rgb);
       return color * smoothstep(0.22, 0.72, luma(color));
     }
 
     void main() {
-      vec3 scene = toLinear(texture(uSceneTexture, vUv).rgb);
+      float inside;
+      float rowScale;
+      vec2 sourceUv = perspectiveSourceUv(vUv, inside, rowScale);
+      vec2 clampedSourceUv = clamp(sourceUv, vec2(0.0), vec2(1.0));
+      vec3 projectedScene = texture(uSceneTexture, clampedSourceUv).rgb;
+      vec3 scene = toLinear(mix(perspectiveBackdrop(vUv), projectedScene, inside));
       float brightness = luma(scene);
-      float sourceY = vUv.y * uSceneSize.y;
+      float sourceY = sourceUv.y * uSceneSize.y;
       float pitch = max(5.0, uScanlineSpacing);
       float phase = abs(fract(sourceY / pitch) - 0.5) * 2.0;
       float beamWidth = mix(0.30, 0.68, sqrt(clamp(brightness, 0.0, 1.0)));
@@ -1219,17 +1283,17 @@
         emissiveGate
       );
 
-      vec2 px = 1.0 / uSceneSize;
-      vec3 bloom = highlightAt(vUv) * 0.34;
-      bloom += highlightAt(vUv + vec2(px.x * 2.0, 0.0)) * 0.24;
-      bloom += highlightAt(vUv - vec2(px.x * 2.0, 0.0)) * 0.24;
-      bloom += highlightAt(vUv + vec2(px.x * 6.0, 0.0)) * 0.09;
-      bloom += highlightAt(vUv - vec2(px.x * 6.0, 0.0)) * 0.09;
+      vec2 px = vec2(1.0 / (uSceneSize.x * max(rowScale, 0.01)), 1.0 / uSceneSize.y);
+      vec3 bloom = highlightAt(sourceUv) * 0.34;
+      bloom += highlightAt(sourceUv + vec2(px.x * 2.0, 0.0)) * 0.24;
+      bloom += highlightAt(sourceUv - vec2(px.x * 2.0, 0.0)) * 0.24;
+      bloom += highlightAt(sourceUv + vec2(px.x * 6.0, 0.0)) * 0.09;
+      bloom += highlightAt(sourceUv - vec2(px.x * 6.0, 0.0)) * 0.09;
 
       vec3 color = scene * rowGain;
-      color += bloom * 0.22 * mix(0.52, 1.0, beam);
+      color += bloom * inside * 0.22 * mix(0.52, 1.0, beam);
 
-      float sourceX = vUv.x * uSceneSize.x;
+      float sourceX = sourceUv.x * uSceneSize.x;
       vec3 phosphor = 1.0 + 0.045 * cos(
         6.2831853 * (sourceX / 6.0 + vec3(0.0, 0.3333333, 0.6666667))
       );
@@ -1248,9 +1312,21 @@
     in vec2 vUv;
     layout(location = 0) out vec4 fragColor;
     uniform sampler2D uSceneTexture;
+    uniform vec2 uSceneSize;
+    uniform float uPerspectiveAngle;
+
+    ${perspectiveShaderFunctions}
 
     void main() {
-      fragColor = texture(uSceneTexture, vUv);
+      if (uPerspectiveAngle < 0.0001) {
+        fragColor = texture(uSceneTexture, vUv);
+        return;
+      }
+      float inside;
+      float rowScale;
+      vec2 sourceUv = perspectiveSourceUv(vUv, inside, rowScale);
+      vec3 scene = texture(uSceneTexture, clamp(sourceUv, vec2(0.0), vec2(1.0))).rgb;
+      fragColor = vec4(mix(perspectiveBackdrop(vUv), scene, inside), 1.0);
     }
   `;
 
@@ -1264,6 +1340,8 @@
     uniform float uPerspectiveAngle;
     uniform float uGlow;
 
+    ${perspectiveShaderFunctions}
+
     float dotPresentLuma(vec3 color) {
       return dot(color, vec3(0.2126, 0.7152, 0.0722));
     }
@@ -1276,23 +1354,12 @@
     }
 
     void main() {
-      float perspective = clamp(uPerspectiveAngle / ${DOT_PERSPECTIVE_MAX.toFixed(1)}, 0.0, 1.0);
-      // The complete 1600x900 DOT bake is projected once here. vUv.y is zero
-      // at the visual bottom, so the upper edge narrows while the bottom stays
+      // The complete 1600x900 bake is projected once here. vUv.y is zero at
+      // the visual bottom, so the upper edge narrows while the bottom remains
       // anchored at full width.
-      // Preserve the original 0-75 degree response exactly, then allow the
-      // same linear taper to continue through the new 90 degree endpoint.
-      float topScale = mix(1.0, ${DOT_PERSPECTIVE_TOP_SCALE.toFixed(3)}, perspective);
-      float perspectiveRow = clamp((vUv.y - 0.05) / 0.90, 0.0, 1.0);
-      float rowScale = mix(1.0, topScale, perspectiveRow);
-      float sourceX = 0.5 + (vUv.x - 0.5) / max(rowScale, 0.01);
-      vec2 sourceUv = vec2(sourceX, vUv.y);
-
-      float edgeDistance = 0.5 * rowScale - abs(vUv.x - 0.5);
-      float edgeAA = max(fwidth(edgeDistance), 1.0 / uSceneSize.x);
-      float inside = perspective < 0.0001
-        ? 1.0
-        : smoothstep(-edgeAA, edgeAA, edgeDistance);
+      float inside;
+      float rowScale;
+      vec2 sourceUv = perspectiveSourceUv(vUv, inside, rowScale);
 
       vec3 scene = texture(uSceneTexture, clamp(sourceUv, vec2(0.0), vec2(1.0))).rgb;
       float sourcePixelX = 1.0 / (uSceneSize.x * max(rowScale, 0.01));
@@ -1393,12 +1460,15 @@
     position: gl.getAttribLocation(crtProgram, "aPosition"),
     sceneTexture: gl.getUniformLocation(crtProgram, "uSceneTexture"),
     sceneSize: gl.getUniformLocation(crtProgram, "uSceneSize"),
+    perspectiveAngle: gl.getUniformLocation(crtProgram, "uPerspectiveAngle"),
     scanlineSpacing: gl.getUniformLocation(crtProgram, "uScanlineSpacing"),
     scanlineStrength: gl.getUniformLocation(crtProgram, "uScanlineStrength"),
   };
   const copyLocations = {
     position: gl.getAttribLocation(copyProgram, "aPosition"),
     sceneTexture: gl.getUniformLocation(copyProgram, "uSceneTexture"),
+    sceneSize: gl.getUniformLocation(copyProgram, "uSceneSize"),
+    perspectiveAngle: gl.getUniformLocation(copyProgram, "uPerspectiveAngle"),
   };
   const dotPresentLocations = {
     position: gl.getAttribLocation(dotPresentProgram, "aPosition"),
@@ -2090,24 +2160,24 @@
     return glyphBaseCorners(record).map((point) => transformPoint(point, record, transform));
   }
 
-  function dotRowScaleForBakeY(bakeY) {
-    if (activePreset().mode !== 1 || state.debugId) return 1;
-    const perspective = Math.max(0, Math.min(1, state.perspectiveAngle / DOT_PERSPECTIVE_MAX));
-    const topScale = 1 + (DOT_PERSPECTIVE_TOP_SCALE - 1) * perspective;
+  function perspectiveRowScaleForBakeY(bakeY) {
+    if (state.debugId) return 1;
+    const perspective = Math.max(0, Math.min(1, state.perspectiveAngle / PERSPECTIVE_MAX));
+    const topScale = 1 + (PERSPECTIVE_TOP_SCALE - 1) * perspective;
     const visualY = 1 - bakeY / TEXTURE_HEIGHT;
     const row = Math.max(0, Math.min(1, (visualY - 0.05) / 0.90));
     return 1 + (topScale - 1) * row;
   }
 
   function projectBakePoint(point) {
-    const rowScale = dotRowScaleForBakeY(point.y);
+    const rowScale = perspectiveRowScaleForBakeY(point.y);
     return { x: TEXTURE_WIDTH * 0.5 + (point.x - TEXTURE_WIDTH * 0.5) * rowScale, y: point.y };
   }
 
   function unprojectDisplayPoint(point, rejectOutside = false) {
-    const rowScale = dotRowScaleForBakeY(point.y);
+    const rowScale = perspectiveRowScaleForBakeY(point.y);
     const normalizedX = point.x / TEXTURE_WIDTH;
-    if (rejectOutside && activePreset().mode === 1 && !state.debugId
+    if (rejectOutside && !state.debugId
       && Math.abs(normalizedX - 0.5) > rowScale * 0.5) return null;
     return { x: TEXTURE_WIDTH * 0.5 + (point.x - TEXTURE_WIDTH * 0.5) / rowScale, y: point.y };
   }
@@ -3153,8 +3223,12 @@
       gl.uniform1f(dotPresentLocations.glow, state.glow / 100);
     } else if (useCrt) {
       gl.uniform2f(crtLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+      gl.uniform1f(crtLocations.perspectiveAngle, state.perspectiveAngle);
       gl.uniform1f(crtLocations.scanlineSpacing, state.vhsScanlineSpacing);
       gl.uniform1f(crtLocations.scanlineStrength, state.vhsScanlineStrength / 100);
+    } else {
+      gl.uniform2f(copyLocations.sceneSize, TEXTURE_WIDTH, TEXTURE_HEIGHT);
+      gl.uniform1f(copyLocations.perspectiveAngle, state.debugId ? 0 : state.perspectiveAngle);
     }
     gl.drawArrays(gl.TRIANGLES, 0, 6);
     syncGlyphTransformUi();
