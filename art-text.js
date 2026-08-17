@@ -33,6 +33,326 @@
   const DOT_FONT_FAMILY = "Tektur DOT";
   const DOT_DISPLAY_FONT = `"${DOT_FONT_FAMILY}", "Arial Black", "Impact", "PingFang SC", sans-serif`;
   const DEBUG_SURFACE = new URLSearchParams(window.location.search).get("debug") || "";
+  const LANGUAGE_STORAGE_KEY = "artText.language";
+  const DEFAULT_LANGUAGE = "en";
+  const I18N = Object.freeze({
+    en: Object.freeze({
+      "document.title": "Y2K Type Material Lab",
+      "brand.title": "TYPE MATERIAL",
+      "brand.subtitle": "Y2K ART-TEXT EDITOR",
+      "header.motionLab": "MOTION LAB",
+      "common.reset": "RESET",
+      "common.apply": "APPLY",
+      "common.loading": "LOADING",
+      "common.selected": "SELECTED",
+      "common.active": "ACTIVE",
+      "common.step1": "STEP 01",
+      "common.step2": "STEP 02",
+      "aria.renderStatus": "Render status",
+      "aria.resetMaterial": "Reset current material settings",
+      "aria.canvasRegion": "Art-text canvas",
+      "aria.canvasView": "Canvas view",
+      "aria.quickPresets": "Quick material preset switcher",
+      "aria.compactTools": "Compact editor tools",
+      "aria.surfacePanel": "Material presets, reflection fields, and diagnostic textures",
+      "aria.inspector": "Art-text controls",
+      "aria.presetGroup": "Material presets",
+      "aria.presetChoice": "Select {preset} material preset",
+      "aria.reflectionChoice": "Select {field} reflection field",
+      "aria.canvasPreset": "{preset} art-text preview. Click and drag a character to edit it.",
+      "canvas.artboard": "ARTBOARD",
+      "canvas.material": "MATERIAL",
+      "canvas.semanticId": "SEMANTIC ID",
+      "glyph.help": "Click and drag a character. Use the magenta handle to rotate and the cyan handle to scale. Page Up and Page Down switch characters; arrow keys move; Alt plus arrow keys rotate or scale.",
+      "glyph.click": "CLICK CHARACTER",
+      "glyph.move": "MOVE",
+      "glyph.rotate": "ROTATE",
+      "glyph.scale": "SCALE",
+      "glyph.selected": "SELECTED CHARACTER",
+      "glyph.resetOne": "RESET CHARACTER",
+      "glyph.resetAll": "RESET ALL LAYOUT",
+      "mobile.field": "FIELD",
+      "mobile.light": "LIGHT",
+      "mobile.type": "TYPE",
+      "mobile.text": "TEXT",
+      "mobile.material": "MATERIAL",
+      "mobile.surface": "SURFACE",
+      "mobile.fx": "FX",
+      "mobile.effects": "EFFECTS",
+      "surface.lab": "MATERIAL LAB",
+      "surface.build": "BUILD THE SURFACE",
+      "surface.presets": "MATERIAL PRESETS",
+      "surface.presetHelp": "CLICK A COVER TO SWITCH THE FULL LOOK",
+      "reflection.title": "REFLECTION FIELD",
+      "reflection.help": "SECONDARY LIGHTING FOR VHS / LIQUID",
+      "reflection.customUrl": "CUSTOM REFLECTION URL",
+      "reflection.customOption": "CUSTOM URL…",
+      "reflection.unavailable": "THIS PRESET DOES NOT USE A REFLECTION FIELD.",
+      "reflection.urlPlaceholder": "https://… / data:image… / blob:…",
+      "textures.eyebrow": "TEXTURES",
+      "textures.title": "MATERIAL MAPS",
+      "textures.help": "SURFACE TEXTURE STACK",
+      "textures.flow": "FLOW NOISE",
+      "textures.grain": "FILM GRAIN",
+      "textures.coverage": "COVERAGE",
+      "textures.body": "BODY HEIGHT",
+      "textures.clipSdf": "CLIP SDF",
+      "textures.shadingSdf": "SHADING SDF",
+      "textures.normal": "NORMAL XY",
+      "inspector.title": "INSPECTOR",
+      "type.title": "TEXT & LAYOUT",
+      "type.text": "TEXT CONTENT",
+      "type.textHint": "LIVE PREVIEW · ENTER FOR NEW LINE",
+      "type.textOverflow": "ONLY THE FIRST 3 LINES · 18 CHARACTERS PER LINE RENDER",
+      "type.textMeta": "{count}/{max} CH · {lines}/{maxLines} LN",
+      "type.textLimits": "Up to 36 characters, 3 lines, and 18 characters per line.",
+      "type.tracking": "TRACKING",
+      "type.lineHeight": "LINE HEIGHT",
+      "material.title": "MATERIAL",
+      "material.edgeRoll": "EDGE ROLL",
+      "material.bodyCrown": "BODY CROWN",
+      "material.faceCurve": "FACE CURVE",
+      "material.envCoverage": "ENV COVERAGE",
+      "material.offsetX": "OFFSET X",
+      "material.offsetY": "OFFSET Y",
+      "material.reflectivity": "REFLECTIVITY",
+      "material.fieldStrength": "FIELD STRENGTH",
+      "material.roughness": "ROUGHNESS",
+      "material.baseColor": "BASE COLOR",
+      "material.baseColorHelp": "VISIBLE AT 0% REFLECTIVITY",
+      "material.liquidWarp": "LIQUID WARP",
+      "material.dotSize": "DOT SIZE",
+      "material.outlineThickness": "OUTLINE THICKNESS",
+      "material.perspective": "PERSPECTIVE ANGLE",
+      "material.glitch": "GLITCH",
+      "material.scanlineGap": "SCANLINE GAP",
+      "material.scanline": "SCANLINE",
+      "material.depth": "DEPTH",
+      "fx.title": "FX",
+      "fx.edgeGlow": "EDGE GLOW",
+      "fx.sceneDetail": "SCENE DETAIL",
+      "fx.edge": "EDGE",
+      "fx.reflect": "REFLECT",
+      "export.title": "EXPORT",
+      "export.pending": "Transparent background and 2× PNG will be enabled in the full version.",
+      "unit.layers": "{value} LAYERS",
+      "unit.glyphs": "{value} GLYPHS",
+      "status.webglStarting": "WEBGL 2 · STARTING",
+      "status.webglReady": "WEBGL 2 · READY",
+      "status.webglUnavailable": "WEBGL 2 · UNAVAILABLE",
+      "status.shaderError": "SHADER ERROR",
+      "status.waitingGlyphBake": "WAITING FOR GLYPH BAKE",
+      "status.normalBakeReady": "NORMAL BAKE READY",
+      "status.loadingDotFont": "LOADING DOT FONT",
+      "status.buildingSdf": "BUILDING SDF",
+      "status.bakeReady": "BAKE READY",
+      "status.waitingInput": "WAITING FOR INPUT",
+      "status.waitingNormalBake": "WAITING FOR NORMAL BAKE",
+      "announce.presetApplied": "Applied {preset}",
+      "announce.reflectionApplied": "Applied {field} reflection field",
+      "announce.customReflectionApplied": "Applied custom reflection field",
+      "announce.glyphSelected": "Selected character {glyph}, {index} of {count}",
+      "announce.glyphCleared": "Character selection cleared",
+      "announce.glyphTransform": "Character {glyph}: X {x}, Y {y}, rotation {rotation} degrees, scale {scale}%",
+      "announce.glyphResetAll": "Reset all character layout",
+      "reflection.enterUrl": "Enter an image URL, then select APPLY",
+      "reflection.loadingCustom": "Loading and processing the 1024 × 512 reflection field…",
+      "reflection.customApplied": "Custom reflection field applied",
+      "reflection.restoringCustom": "Restoring custom reflection field…",
+      "reflection.customRestored": "Custom reflection field restored",
+      "error.urlRequired": "Enter an image URL",
+      "error.urlTooLarge": "DATA URL is too large (maximum 8 MiB)",
+      "error.urlInvalid": "Invalid URL format",
+      "error.urlScheme": "Only http(s), data, or blob image URLs are supported",
+      "error.mixedContent": "An HTTPS page cannot load an HTTP image",
+      "error.dataMime": "DATA URL supports PNG, JPEG, WebP, or AVIF only",
+      "error.unknownReflection": "Unknown reflection field",
+      "error.imageTimeout": "Image loading timed out",
+      "error.imageSizeInvalid": "Invalid image dimensions",
+      "error.imageTooLarge": "Image is too large (maximum 8192px / 32MP)",
+      "error.customImageLoad": "Image failed to load; public URLs must allow cross-origin access (CORS)",
+      "error.builtinImageLoad": "Built-in reflection field failed to load: {field}",
+      "error.imageUnreadable": "Image cannot be read; make sure the URL allows cross-origin access (CORS)",
+      "error.textureCreate": "Unable to create reflection texture",
+      "error.textureUpload": "Reflection texture upload failed ({code})",
+      "error.reflectionLoad": "Reflection field failed to load",
+      "error.customUnavailable": "Custom reflection field is unavailable",
+      "error.reflectionUnavailable": "Reflection field is unavailable",
+      "error.fallbackApplied": "{error}; fell back to {field}",
+      "error.fallbackFailed": "{error}; fallback failed: {fallback}",
+    }),
+    zh: Object.freeze({
+      "document.title": "Y2K 艺术字材质实验室",
+      "brand.title": "字体材质",
+      "brand.subtitle": "Y2K 艺术字编辑器",
+      "header.motionLab": "动态实验室",
+      "common.reset": "重置",
+      "common.apply": "应用",
+      "common.loading": "加载中",
+      "common.selected": "已选择",
+      "common.active": "使用中",
+      "common.step1": "第 1 步",
+      "common.step2": "第 2 步",
+      "aria.renderStatus": "渲染状态",
+      "aria.resetMaterial": "重置当前材质参数",
+      "aria.canvasRegion": "艺术字画布",
+      "aria.canvasView": "画布视图",
+      "aria.quickPresets": "材质预设快捷切换",
+      "aria.compactTools": "紧凑编辑工具",
+      "aria.surfacePanel": "材质预设、反射光场与诊断纹理",
+      "aria.inspector": "艺术字参数",
+      "aria.presetGroup": "材质预设",
+      "aria.presetChoice": "选择 {preset} 材质预设",
+      "aria.reflectionChoice": "选择 {field} 反射光场",
+      "aria.canvasPreset": "{preset} 艺术字预览，可点击字符并拖动编辑",
+      "canvas.artboard": "画板",
+      "canvas.material": "材质",
+      "canvas.semanticId": "语义 ID",
+      "glyph.help": "点击并拖动字符。洋红手柄旋转，青色手柄缩放。Page Up 和 Page Down 切换字符；方向键移动；Alt 加方向键旋转或缩放。",
+      "glyph.click": "点击字符",
+      "glyph.move": "移动",
+      "glyph.rotate": "旋转",
+      "glyph.scale": "缩放",
+      "glyph.selected": "已选字符",
+      "glyph.resetOne": "重置字符",
+      "glyph.resetAll": "重置全部布局",
+      "mobile.field": "光场",
+      "mobile.light": "灯光",
+      "mobile.type": "文字",
+      "mobile.text": "排版",
+      "mobile.material": "材质",
+      "mobile.surface": "表面",
+      "mobile.fx": "效果",
+      "mobile.effects": "氛围",
+      "surface.lab": "材质实验室",
+      "surface.build": "构建整体材质",
+      "surface.presets": "材质预设",
+      "surface.presetHelp": "点击封面切换整套效果",
+      "reflection.title": "反射光场",
+      "reflection.help": "用于 VHS / LIQUID 的辅助光照",
+      "reflection.customUrl": "自定义反射图片 URL",
+      "reflection.customOption": "自定义 URL…",
+      "reflection.unavailable": "此预设不使用反射光场。",
+      "reflection.urlPlaceholder": "粘贴图片 URL（https://、data:image 或 blob:）",
+      "textures.eyebrow": "纹理",
+      "textures.title": "材质贴图",
+      "textures.help": "表面纹理栈",
+      "textures.flow": "流动噪声",
+      "textures.grain": "胶片颗粒",
+      "textures.coverage": "覆盖度",
+      "textures.body": "主体高度",
+      "textures.clipSdf": "裁剪 SDF",
+      "textures.shadingSdf": "着色 SDF",
+      "textures.normal": "法线 XY",
+      "inspector.title": "参数面板",
+      "type.title": "文字与排版",
+      "type.text": "文字内容",
+      "type.textHint": "实时预览 · Enter 换行",
+      "type.textOverflow": "仅渲染前 3 行 · 每行前 18 个字符",
+      "type.textMeta": "{count}/{max} 字 · {lines}/{maxLines} 行",
+      "type.textLimits": "最多 36 个字符、3 行，每行 18 个字符。",
+      "type.tracking": "字距",
+      "type.lineHeight": "行高",
+      "material.title": "材质",
+      "material.edgeRoll": "边缘圆润度",
+      "material.bodyCrown": "字面隆起",
+      "material.faceCurve": "字面曲率",
+      "material.envCoverage": "环境映射范围",
+      "material.offsetX": "X 偏移",
+      "material.offsetY": "Y 偏移",
+      "material.reflectivity": "反射率",
+      "material.fieldStrength": "光场强度",
+      "material.roughness": "粗糙度",
+      "material.baseColor": "基础颜色",
+      "material.baseColorHelp": "反射率为 0% 时显示",
+      "material.liquidWarp": "液态扭曲",
+      "material.dotSize": "点阵大小",
+      "material.outlineThickness": "描边厚度",
+      "material.perspective": "透视角度",
+      "material.glitch": "故障强度",
+      "material.scanlineGap": "扫描线间距",
+      "material.scanline": "扫描线强度",
+      "material.depth": "挤出深度",
+      "fx.title": "效果",
+      "fx.edgeGlow": "边缘辉光",
+      "fx.sceneDetail": "场景细节",
+      "fx.edge": "边缘色",
+      "fx.reflect": "反射色",
+      "export.title": "导出",
+      "export.pending": "透明背景与 2× PNG 将在完整版本启用。",
+      "unit.layers": "{value} 层",
+      "unit.glyphs": "{value} 个字符",
+      "status.webglStarting": "WEBGL 2 · 启动中",
+      "status.webglReady": "WEBGL 2 · 就绪",
+      "status.webglUnavailable": "WEBGL 2 · 不可用",
+      "status.shaderError": "着色器错误",
+      "status.waitingGlyphBake": "等待字符烘焙",
+      "status.normalBakeReady": "法线烘焙就绪",
+      "status.loadingDotFont": "正在加载点阵字体",
+      "status.buildingSdf": "正在生成 SDF",
+      "status.bakeReady": "烘焙就绪",
+      "status.waitingInput": "等待输入",
+      "status.waitingNormalBake": "等待法线烘焙",
+      "announce.presetApplied": "已应用 {preset}",
+      "announce.reflectionApplied": "已应用 {field} 反射光场",
+      "announce.customReflectionApplied": "已应用自定义反射光场",
+      "announce.glyphSelected": "已选中字符 {glyph}，第 {index} 个，共 {count} 个",
+      "announce.glyphCleared": "已取消字符选择",
+      "announce.glyphTransform": "字符 {glyph}：X {x}，Y {y}，旋转 {rotation} 度，缩放 {scale}%",
+      "announce.glyphResetAll": "已重置全部字符布局",
+      "reflection.enterUrl": "输入图片 URL 后点击应用",
+      "reflection.loadingCustom": "正在加载并处理 1024 × 512 反射光场…",
+      "reflection.customApplied": "自定义反射光场已应用",
+      "reflection.restoringCustom": "正在恢复自定义反射光场…",
+      "reflection.customRestored": "自定义反射光场已恢复",
+      "error.urlRequired": "请输入图片 URL",
+      "error.urlTooLarge": "DATA URL 过大（最大 8 MiB）",
+      "error.urlInvalid": "URL 格式无效",
+      "error.urlScheme": "仅支持 http(s)、data 或 blob 图片 URL",
+      "error.mixedContent": "HTTPS 页面不能加载 HTTP 图片",
+      "error.dataMime": "DATA URL 仅支持 PNG、JPEG、WebP 或 AVIF",
+      "error.unknownReflection": "未知反射光场",
+      "error.imageTimeout": "图片加载超时",
+      "error.imageSizeInvalid": "图片尺寸无效",
+      "error.imageTooLarge": "图片尺寸过大（最大 8192px / 32MP）",
+      "error.customImageLoad": "图片加载失败；公开 URL 需要允许跨域访问（CORS）",
+      "error.builtinImageLoad": "内置反射光场加载失败：{field}",
+      "error.imageUnreadable": "图片无法读取；请确认 URL 允许跨域访问（CORS）",
+      "error.textureCreate": "无法创建反射纹理",
+      "error.textureUpload": "反射纹理上传失败（{code}）",
+      "error.reflectionLoad": "反射光场加载失败",
+      "error.customUnavailable": "自定义反射光场不可用",
+      "error.reflectionUnavailable": "反射光场不可用",
+      "error.fallbackApplied": "{error}；已回退 {field}",
+      "error.fallbackFailed": "{error}；回退失败：{fallback}",
+    }),
+  });
+  function readStoredLanguage() {
+    try {
+      const stored = window.localStorage.getItem(LANGUAGE_STORAGE_KEY);
+      return Object.prototype.hasOwnProperty.call(I18N, stored) ? stored : DEFAULT_LANGUAGE;
+    } catch {
+      return DEFAULT_LANGUAGE;
+    }
+  }
+  let uiLanguage = readStoredLanguage();
+  function t(key, params = {}) {
+    const template = I18N[uiLanguage]?.[key] ?? I18N[DEFAULT_LANGUAGE]?.[key] ?? key;
+    return template.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, name) => String(params[name] ?? `{${name}}`));
+  }
+  function localized(key, params = {}) {
+    return { key, params };
+  }
+  function localizedError(key, params = {}) {
+    const error = new Error(t(key, params));
+    error.i18nKey = key;
+    error.i18nParams = params;
+    return error;
+  }
+  function localizedErrorMessage(error, fallbackKey = "error.reflectionLoad") {
+    if (error?.i18nKey) return t(error.i18nKey, error.i18nParams);
+    return error?.message || t(fallbackKey);
+  }
   const {
     createArtworkBodyHeight,
     createArtworkShadingDistance,
@@ -82,6 +402,13 @@
     glyphReadout: document.querySelector("#glyphReadout"),
     inspectorMaterialName: document.querySelector("#inspectorMaterialName"),
     materialAnnouncement: document.querySelector("#materialAnnouncement"),
+    mobilePanelTabs: [...document.querySelectorAll("[data-mobile-panel-tab]")],
+    presetRail: document.querySelector("#surfacePanel"),
+    inspector: document.querySelector("#inspectorPanel"),
+    typographyControls: document.querySelector("#typographyControls"),
+    materialControls: document.querySelector("#materialControls"),
+    fxControls: document.querySelector("#fxControls"),
+    exportControls: document.querySelector("#exportControls"),
     presetCards: [...document.querySelectorAll("[data-material-preset]")],
     reflectionStyleCards: [...document.querySelectorAll("[data-reflection-style]")],
     generatedAssetCanvases: new Map(
@@ -89,10 +416,13 @@
         .map((canvas) => [canvas.dataset.generatedAsset, canvas]),
     ),
     materialSpecificControls: [...document.querySelectorAll("[data-materials]")],
+    languageToggle: document.querySelector("#languageToggle"),
     resetButton: document.querySelector("#resetButton"),
     materialViewButton: document.querySelector("#materialViewButton"),
     idViewButton: document.querySelector("#idViewButton"),
     textInput: document.querySelector("#textInput"),
+    textInputHint: document.querySelector("#textInputHint"),
+    textInputMeta: document.querySelector("#textInputMeta"),
     trackingInput: document.querySelector("#trackingInput"),
     trackingValue: document.querySelector("#trackingValue"),
     lineHeightInput: document.querySelector("#lineHeightInput"),
@@ -145,9 +475,12 @@
     glyphTransformOverlay: document.querySelector("#glyphTransformOverlay"),
     glyphSelectionBox: document.querySelector("#glyphSelectionBox"),
     glyphRotateStem: document.querySelector("#glyphRotateStem"),
+    glyphRotateHitArea: document.querySelector("#glyphRotateHitArea"),
+    glyphScaleHitArea: document.querySelector("#glyphScaleHitArea"),
     glyphRotateHandle: document.querySelector("#glyphRotateHandle"),
     glyphScaleHandle: document.querySelector("#glyphScaleHandle"),
     glyphTransformControls: document.querySelector("#glyphTransformControls"),
+    glyphInteractionGuide: document.querySelector("#glyphInteractionGuide"),
     selectedGlyphLabel: document.querySelector("#selectedGlyphLabel"),
     glyphOffsetXInput: document.querySelector("#glyphOffsetXInput"),
     glyphOffsetYInput: document.querySelector("#glyphOffsetYInput"),
@@ -156,6 +489,7 @@
     resetGlyphTransformButton: document.querySelector("#resetGlyphTransformButton"),
     resetAllGlyphTransformsButton: document.querySelector("#resetAllGlyphTransformsButton"),
   };
+  ui.textInput.maxLength = MAX_TEXT_LENGTH;
 
   const state = {
     ...DEFAULTS,
@@ -167,6 +501,190 @@
   };
   let nextGlyphKey = 1;
   let latestIdPixels = null;
+  let dotFontLoadState = "idle";
+  let dotFontLoadPromise = null;
+  const mobileEditorMedia = window.matchMedia(MOBILE_EDITOR_QUERY);
+
+  function setLocalizedText(element, key, params = {}) {
+    if (!element) return;
+    element.dataset.i18nDynamic = key;
+    element._i18nParams = params;
+    element.textContent = t(key, params);
+  }
+
+  function clearLocalizedText(element) {
+    if (!element) return;
+    delete element.dataset.i18nDynamic;
+    delete element._i18nParams;
+    element.textContent = "";
+  }
+
+  function setLocalizedMessage(element, message) {
+    if (!message) {
+      clearLocalizedText(element);
+      return;
+    }
+    if (typeof message === "object" && message.key) {
+      setLocalizedText(element, message.key, message.params);
+      return;
+    }
+    delete element.dataset.i18nDynamic;
+    delete element._i18nParams;
+    element.textContent = String(message);
+  }
+
+  function syncLanguageDependentAria() {
+    const preset = activePreset();
+    ui.canvas.setAttribute("aria-label", t("aria.canvasPreset", { preset: preset.label }));
+    ui.presetCards.forEach((card) => {
+      const cardPreset = PRESETS[card.dataset.materialPreset];
+      if (cardPreset) card.setAttribute("aria-label", t("aria.presetChoice", { preset: cardPreset.label }));
+    });
+    document.querySelector(".surface-switcher")?.setAttribute("aria-label", t("aria.presetGroup"));
+    ui.reflectionStyleCards.forEach((card) => {
+      const field = REFLECTION_STYLES[card.dataset.reflectionStyle];
+      if (field) card.setAttribute("aria-label", t("aria.reflectionChoice", { field }));
+      if (card._reflectionLoadError) card.title = localizedErrorMessage(card._reflectionLoadError);
+    });
+  }
+
+  function applyLanguage(language, { persist = true, refresh = true } = {}) {
+    uiLanguage = Object.prototype.hasOwnProperty.call(I18N, language) ? language : DEFAULT_LANGUAGE;
+    document.documentElement.lang = uiLanguage === "zh" ? "zh-CN" : "en";
+    document.documentElement.dataset.language = uiLanguage;
+    document.title = t("document.title");
+    document.querySelectorAll("[data-i18n]").forEach((element) => {
+      element.textContent = t(element.dataset.i18n);
+    });
+    document.querySelectorAll("[data-i18n-aria-label]").forEach((element) => {
+      element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel));
+    });
+    document.querySelectorAll("[data-i18n-placeholder]").forEach((element) => {
+      element.setAttribute("placeholder", t(element.dataset.i18nPlaceholder));
+    });
+    document.querySelectorAll("[data-i18n-dynamic]").forEach((element) => {
+      element.textContent = t(element.dataset.i18nDynamic, element._i18nParams);
+    });
+    ui.customReflectionUrlInput.placeholder = t("reflection.urlPlaceholder");
+    const nextLanguageLabel = uiLanguage === "en" ? "Switch to Chinese" : "切换到英文";
+    ui.languageToggle.setAttribute("aria-label", nextLanguageLabel);
+    ui.languageToggle.title = nextLanguageLabel;
+    syncLanguageDependentAria();
+    if (!mobileEditorMedia.matches) ui.presetRail.setAttribute("aria-label", t("aria.surfacePanel"));
+    if (refresh) syncControls();
+    if (persist) {
+      try {
+        window.localStorage.setItem(LANGUAGE_STORAGE_KEY, uiLanguage);
+      } catch {
+        // Keep the in-memory language when storage is unavailable.
+      }
+    }
+  }
+
+  setLocalizedText(ui.gpuStatus, "status.webglStarting");
+  setLocalizedText(ui.renderStatus, "status.buildingSdf");
+  ui.languageToggle.addEventListener("click", () => {
+    applyLanguage(uiLanguage === "en" ? "zh" : "en");
+  });
+
+  function mobilePanelElements() {
+    return {
+      surface: ui.presetRail,
+      type: ui.typographyControls,
+      material: ui.materialControls,
+      fx: ui.fxControls,
+    };
+  }
+
+  function syncMobileEditorLayout() {
+    const isMobileEditor = mobileEditorMedia.matches;
+    const panels = mobilePanelElements();
+    const requestedPanel = document.documentElement.dataset.mobilePanel;
+    const activePanel = panels[requestedPanel] ? requestedPanel : "type";
+    document.documentElement.dataset.mobilePanel = activePanel;
+    document.documentElement.classList.toggle("is-mobile-editor", isMobileEditor);
+
+    ui.mobilePanelTabs.forEach((tab) => {
+      const isActive = tab.dataset.mobilePanelTab === activePanel;
+      tab.classList.toggle("is-active", isActive);
+      tab.setAttribute("aria-selected", String(isActive));
+      tab.tabIndex = isActive ? 0 : -1;
+    });
+
+    if (!isMobileEditor) {
+      ui.presetRail.hidden = false;
+      ui.inspector.hidden = false;
+      ui.presetRail.setAttribute("aria-label", t("aria.surfacePanel"));
+      [ui.typographyControls, ui.materialControls, ui.fxControls, ui.exportControls].forEach((panel) => {
+        panel.hidden = false;
+        panel.removeAttribute("role");
+        panel.removeAttribute("aria-labelledby");
+        panel.removeAttribute("tabindex");
+      });
+      ui.presetRail.removeAttribute("role");
+      ui.presetRail.removeAttribute("aria-labelledby");
+      ui.presetRail.removeAttribute("tabindex");
+      return;
+    }
+
+    ui.presetRail.removeAttribute("aria-label");
+    ui.presetRail.hidden = activePanel !== "surface";
+    ui.inspector.hidden = activePanel === "surface";
+    ui.typographyControls.hidden = activePanel !== "type";
+    ui.materialControls.hidden = activePanel !== "material";
+    ui.fxControls.hidden = activePanel !== "fx";
+    ui.exportControls.hidden = true;
+
+    Object.entries(panels).forEach(([key, panel]) => {
+      const tab = ui.mobilePanelTabs.find((candidate) => candidate.dataset.mobilePanelTab === key);
+      panel.setAttribute("role", "tabpanel");
+      panel.setAttribute("aria-labelledby", tab.id);
+      panel.tabIndex = 0;
+    });
+  }
+
+  function selectMobilePanel(panelKey, { focus = false } = {}) {
+    if (!mobilePanelElements()[panelKey]) return;
+    document.documentElement.dataset.mobilePanel = panelKey;
+    syncMobileEditorLayout();
+    const tab = ui.mobilePanelTabs.find((candidate) => candidate.dataset.mobilePanelTab === panelKey);
+    if (focus) tab?.focus();
+    const scroller = panelKey === "surface" ? ui.presetRail : ui.inspector;
+    scroller.scrollTop = 0;
+    requestAnimationFrame(syncOverlayBounds);
+  }
+
+  ui.mobilePanelTabs.forEach((tab, index) => {
+    tab.addEventListener("click", () => selectMobilePanel(tab.dataset.mobilePanelTab));
+    tab.addEventListener("keydown", (event) => {
+      let nextIndex = index;
+      if (event.key === "ArrowRight") nextIndex = (index + 1) % ui.mobilePanelTabs.length;
+      else if (event.key === "ArrowLeft") nextIndex = (index - 1 + ui.mobilePanelTabs.length) % ui.mobilePanelTabs.length;
+      else if (event.key === "Home") nextIndex = 0;
+      else if (event.key === "End") nextIndex = ui.mobilePanelTabs.length - 1;
+      else return;
+      event.preventDefault();
+      selectMobilePanel(ui.mobilePanelTabs[nextIndex].dataset.mobilePanelTab, { focus: true });
+    });
+  });
+  function handleMobileEditorMediaChange() {
+    const previouslyFocused = document.activeElement;
+    const wasFocusedInMobileChrome = previouslyFocused?.closest?.(".mobile-panel-tabs, .mobile-preset-switcher");
+    syncMobileEditorLayout();
+    if (previouslyFocused?.closest?.("[hidden]")) {
+      ui.mobilePanelTabs.find((tab) => tab.getAttribute("aria-selected") === "true")?.focus();
+    } else if (!mobileEditorMedia.matches && wasFocusedInMobileChrome) {
+      ui.canvas.focus({ preventScroll: true });
+    }
+    requestAnimationFrame(syncOverlayBounds);
+  }
+
+  if (typeof mobileEditorMedia.addEventListener === "function") {
+    mobileEditorMedia.addEventListener("change", handleMobileEditorMediaChange);
+  } else {
+    mobileEditorMedia.addListener(handleMobileEditorMediaChange);
+  }
+  syncMobileEditorLayout();
 
   function activePreset() {
     return PRESETS[state.activePreset] || PRESETS[DEFAULT_PRESET_KEY];
@@ -176,11 +694,37 @@
     return activePreset().mode === 1 ? DOT_DISPLAY_FONT : DISPLAY_FONT;
   }
 
+  function activeDisplayFontWeight() {
+    return activePreset().mode === 1 ? DOT_FONT_WEIGHT : 900;
+  }
+
+  function ensureDotDisplayFont() {
+    if (dotFontLoadState !== "idle") return dotFontLoadState;
+    if (!document.fonts) {
+      dotFontLoadState = "fallback";
+      return dotFontLoadState;
+    }
+    dotFontLoadState = "loading";
+    dotFontLoadPromise = document.fonts
+      .load(`${DOT_FONT_WEIGHT} 64px "${DOT_FONT_FAMILY}"`, "Y2K CHROME GLITCH 0123456789")
+      .then((faces) => {
+        dotFontLoadState = faces.length > 0 ? "ready" : "fallback";
+        if (activePreset().mode === 1) scheduleRebuild();
+        return dotFontLoadState;
+      })
+      .catch(() => {
+        dotFontLoadState = "fallback";
+        if (activePreset().mode === 1) scheduleRebuild();
+        return dotFontLoadState;
+      });
+    return dotFontLoadState;
+  }
+
   function syncPresetSelection() {
     const preset = activePreset();
     document.documentElement.dataset.material = preset.key;
     ui.inspectorMaterialName.textContent = preset.label;
-    ui.canvas.setAttribute("aria-label", `${preset.ariaLabel}，可点击字符并拖动编辑`);
+    ui.canvas.setAttribute("aria-label", t("aria.canvasPreset", { preset: preset.label }));
     ui.presetCards.forEach((card) => {
       const isActive = card.dataset.materialPreset === preset.key;
       card.classList.toggle("is-active", isActive);
@@ -211,13 +755,22 @@
     Object.assign(state, settingsByPreset[key]);
     syncControls();
     syncPresetSelection();
-    ui.materialAnnouncement.textContent = `已应用 ${preset.label}`;
+    setLocalizedText(ui.materialAnnouncement, "announce.presetApplied", { preset: preset.label });
     state.debugId = false;
     ui.materialViewButton.classList.add("is-active");
     ui.idViewButton.classList.remove("is-active");
+    ui.materialViewButton.setAttribute("aria-pressed", "true");
+    ui.idViewButton.setAttribute("aria-pressed", "false");
+    if (preset.mode === 1) ensureDotDisplayFont();
     applyPresetBake();
     if (preset.mode !== 1) loadPresetReflection(key);
   }
+
+  // Keep the editor controls truthful even when WebGL initialization fails.
+  syncControls();
+  syncPresetSelection();
+  applyLanguage(uiLanguage, { persist: false });
+
   const sourceCanvas = document.createElement("canvas");
   sourceCanvas.width = TEXTURE_WIDTH;
   sourceCanvas.height = TEXTURE_HEIGHT;
@@ -239,8 +792,8 @@
 
   if (!gl) {
     ui.renderError.hidden = false;
-    ui.renderError.textContent = "WEBGL 2 CONTEXT UNAVAILABLE";
-    ui.gpuStatus.textContent = "WEBGL 2 UNAVAILABLE";
+    setLocalizedText(ui.renderError, "status.webglUnavailable");
+    setLocalizedText(ui.gpuStatus, "status.webglUnavailable");
     return;
   }
 
@@ -1421,7 +1974,7 @@
   } catch (error) {
     ui.renderError.hidden = false;
     ui.renderError.textContent = error.message;
-    ui.gpuStatus.textContent = "SHADER ERROR";
+    setLocalizedText(ui.gpuStatus, "status.shaderError");
     return;
   }
 
@@ -1650,7 +2203,7 @@
   let reflectionRequestId = 0;
 
   function setCustomReflectionStatus(message = "", status = "") {
-    ui.customReflectionStatus.textContent = message;
+    setLocalizedMessage(ui.customReflectionStatus, message);
     if (status) ui.customReflectionStatus.dataset.state = status;
     else delete ui.customReflectionStatus.dataset.state;
   }
@@ -1658,7 +2211,7 @@
   function setReflectionRequestBusy(busy) {
     const control = ui.applyReflectionUrlButton.closest(".reflection-url-control");
     control.setAttribute("aria-busy", String(busy));
-    ui.applyReflectionUrlButton.textContent = busy ? "LOADING" : "APPLY";
+    setLocalizedText(ui.applyReflectionUrlButton, busy ? "common.loading" : "common.apply");
   }
 
   function invalidateReflectionRequest() {
@@ -1669,23 +2222,23 @@
 
   function normalizeCustomReflectionUrl(rawUrl) {
     const trimmed = rawUrl.trim();
-    if (!trimmed) throw new Error("请输入图片 URL");
-    if (trimmed.length > MAX_CUSTOM_URL_LENGTH) throw new Error("DATA URL 过大（最大 8 MiB）");
+    if (!trimmed) throw localizedError("error.urlRequired");
+    if (trimmed.length > MAX_CUSTOM_URL_LENGTH) throw localizedError("error.urlTooLarge");
     let parsed;
     try {
       parsed = new URL(trimmed, window.location.href);
     } catch {
-      throw new Error("URL 格式无效");
+      throw localizedError("error.urlInvalid");
     }
     if (!["http:", "https:", "data:", "blob:"].includes(parsed.protocol)) {
-      throw new Error("仅支持 http(s)、data 或 blob 图片 URL");
+      throw localizedError("error.urlScheme");
     }
     if (window.location.protocol === "https:" && parsed.protocol === "http:") {
-      throw new Error("HTTPS 页面不能加载 HTTP 图片");
+      throw localizedError("error.mixedContent");
     }
     if (parsed.protocol === "data:"
       && !/^data:image\/(?:png|jpe?g|webp|avif)(?:;[^,]*)?,/i.test(parsed.href)) {
-      throw new Error("DATA URL 仅支持 PNG、JPEG、WebP 或 AVIF");
+      throw localizedError("error.dataMime");
     }
     return parsed.href;
   }
@@ -1701,7 +2254,7 @@
         custom: true,
       };
     }
-    if (!REFLECTION_SOURCES[styleKey]) throw new Error("未知反射场");
+    if (!REFLECTION_SOURCES[styleKey]) throw localizedError("error.unknownReflection");
     const url = new URL(REFLECTION_SOURCES[styleKey], window.location.href).href;
     return {
       key: styleKey,
@@ -1725,7 +2278,7 @@
         callback(value);
       };
       const timeoutId = window.setTimeout(() => {
-        finish(reject, new Error("图片加载超时"));
+        finish(reject, localizedError("error.imageTimeout"));
         image.src = "";
       }, 15000);
       image.decoding = "async";
@@ -1737,20 +2290,20 @@
         const width = image.naturalWidth;
         const height = image.naturalHeight;
         if (!width || !height) {
-          finish(reject, new Error("图片尺寸无效"));
+          finish(reject, localizedError("error.imageSizeInvalid"));
           return;
         }
         if (width > 8192 || height > 8192 || width * height > MAX_REFLECTION_IMAGE_PIXELS) {
-          finish(reject, new Error("图片尺寸过大（最大 8192px / 32MP）"));
+          finish(reject, localizedError("error.imageTooLarge"));
           return;
         }
         finish(resolve, image);
       };
       image.onerror = () => finish(
         reject,
-        new Error(descriptor.custom
-          ? "图片加载失败；公开 URL 需要允许跨域访问（CORS）"
-          : `内置反射场加载失败：${descriptor.label}`),
+        descriptor.custom
+          ? localizedError("error.customImageLoad")
+          : localizedError("error.builtinImageLoad", { field: descriptor.label }),
       );
       image.src = descriptor.url;
     });
@@ -1772,7 +2325,7 @@
     try {
       context.getImageData(0, 0, 1, 1);
     } catch {
-      throw new Error("图片无法读取；请确认 URL 允许跨域访问（CORS）");
+      throw localizedError("error.imageUnreadable");
     }
     return canvas;
   }
@@ -1812,7 +2365,7 @@
 
   function createReflectionTexture(canvas) {
     const nextTexture = gl.createTexture();
-    if (!nextTexture) throw new Error("无法创建反射纹理");
+    if (!nextTexture) throw localizedError("error.textureCreate");
     try {
       for (let index = 0; index < 8 && gl.getError() !== gl.NO_ERROR; index += 1) {
         // Clear errors left by unrelated optional paths before checking upload.
@@ -1827,7 +2380,7 @@
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, canvas);
       gl.generateMipmap(gl.TEXTURE_2D);
       const error = gl.getError();
-      if (error !== gl.NO_ERROR) throw new Error(`反射纹理上传失败（0x${error.toString(16)}）`);
+      if (error !== gl.NO_ERROR) throw localizedError("error.textureUpload", { code: `0x${error.toString(16)}` });
       return nextTexture;
     } catch (error) {
       gl.deleteTexture(nextTexture);
@@ -1860,7 +2413,9 @@
       const card = ui.reflectionStyleCards[index];
       const failed = result.status === "rejected";
       card.toggleAttribute("data-load-error", failed);
-      if (failed) card.title = result.reason?.message || "反射场加载失败";
+      card._reflectionLoadError = failed ? result.reason : null;
+      if (failed) card.title = localizedErrorMessage(result.reason);
+      else card.removeAttribute("title");
     });
   }
 
@@ -1893,13 +2448,15 @@
       if (successMessage) setCustomReflectionStatus(successMessage, "success");
       else if (!preserveStatus) setCustomReflectionStatus();
       syncReflectionSelection();
-      if (announce) ui.materialAnnouncement.textContent = announce;
+      if (announce) setLocalizedMessage(ui.materialAnnouncement, announce);
       render();
       return { status: "applied", asset };
     } catch (error) {
       if (requestId !== reflectionRequestId) return { status: "stale" };
       setReflectionRequestBusy(false);
-      setCustomReflectionStatus(error.message || "反射场加载失败", "error");
+      setCustomReflectionStatus(error?.i18nKey
+        ? localized(error.i18nKey, error.i18nParams)
+        : localizedErrorMessage(error), "error");
       syncReflectionSelection();
       render();
       return { status: "failed", error };
@@ -1936,7 +2493,7 @@
     if (styleKey === "custom") {
       invalidateReflectionRequest();
       syncReflectionSelection();
-      setCustomReflectionStatus("输入图片 URL 后点击 APPLY");
+      setCustomReflectionStatus(localized("reflection.enterUrl"));
       ui.customReflectionUrlInput.focus();
       return;
     }
@@ -1947,7 +2504,7 @@
     const descriptor = reflectionDescriptor(styleKey);
     await requestReflection(descriptor, {
       commit: () => writePresetSetting("reflectionStyle", styleKey),
-      announce: `已应用 ${REFLECTION_STYLES[styleKey]} 反射场`,
+      announce: localized("announce.reflectionApplied", { field: REFLECTION_STYLES[styleKey] }),
     });
   }
 
@@ -1959,14 +2516,16 @@
     try {
       descriptor = reflectionDescriptor("custom", ui.customReflectionUrlInput.value);
     } catch (error) {
-      setCustomReflectionStatus(error.message, "error");
+      setCustomReflectionStatus(error?.i18nKey
+        ? localized(error.i18nKey, error.i18nParams)
+        : localizedErrorMessage(error), "error");
       syncReflectionSelection();
       return;
     }
     await requestReflection(descriptor, {
-      loadingMessage: "正在加载并处理 1024 × 512 反射场…",
-      successMessage: "自定义反射场已应用",
-      announce: "已应用自定义反射场",
+      loadingMessage: localized("reflection.loadingCustom"),
+      successMessage: localized("reflection.customApplied"),
+      announce: localized("announce.customReflectionApplied"),
       commit: (asset) => {
         writePresetSetting("customReflectionUrl", asset.url);
         writePresetSetting("reflectionStyle", "custom");
@@ -1981,20 +2540,22 @@
     try {
       descriptor = reflectionDescriptor(state.reflectionStyle, state.customReflectionUrl);
     } catch (error) {
-      setCustomReflectionStatus(error.message, "error");
+      setCustomReflectionStatus(error?.i18nKey
+        ? localized(error.i18nKey, error.i18nParams)
+        : localizedErrorMessage(error), "error");
       syncReflectionSelection();
       return;
     }
     const result = await requestReflection(descriptor, {
-      loadingMessage: descriptor.custom ? "正在恢复自定义反射场…" : "",
-      successMessage: descriptor.custom ? "自定义反射场已恢复" : "",
+      loadingMessage: descriptor.custom ? localized("reflection.restoringCustom") : "",
+      successMessage: descriptor.custom ? localized("reflection.customRestored") : "",
     });
     if (result.status !== "failed"
       || !descriptor.custom
       || state.activePreset !== presetKey
       || state.reflectionStyle !== "custom") return;
 
-    const originalError = result.error?.message || "自定义反射场不可用";
+    const originalError = localizedErrorMessage(result.error, "error.customUnavailable");
     const fallbackStyle = getPresetFallbackReflectionStyle();
     if (!fallbackStyle) return;
     const fallback = await requestReflection(reflectionDescriptor(fallbackStyle), {
@@ -2004,15 +2565,15 @@
     if (fallback.status === "applied") {
       syncControls();
       syncReflectionSelection();
-      setCustomReflectionStatus(
-        `${originalError}；已回退 ${REFLECTION_STYLES[fallbackStyle]}`,
-        "error",
-      );
+      setCustomReflectionStatus(localized("error.fallbackApplied", {
+        error: originalError,
+        field: REFLECTION_STYLES[fallbackStyle],
+      }), "error");
     } else if (fallback.status === "failed") {
-      setCustomReflectionStatus(
-        `${originalError}；回退失败：${fallback.error?.message || "反射场不可用"}`,
-        "error",
-      );
+      setCustomReflectionStatus(localized("error.fallbackFailed", {
+        error: originalError,
+        fallback: localizedErrorMessage(fallback.error, "error.reflectionUnavailable"),
+      }), "error");
     }
   }
 
@@ -2231,6 +2792,7 @@
     const record = selectedGlyphRecord();
     ui.glyphTransformControls.hidden = !record;
     ui.glyphTransformOverlay.toggleAttribute("hidden", !record);
+    ui.glyphInteractionGuide.classList.toggle("is-active", Boolean(record));
     if (!record) return;
     const transform = draftTransform || glyphTransformForKey(record.key);
     const corners = glyphCornersForTransform(record, transform).map(projectBakePoint);
@@ -2248,8 +2810,12 @@
       TEXTURE_WIDTH / Math.max(1, ui.canvas.clientWidth),
       TEXTURE_HEIGHT / Math.max(1, ui.canvas.clientHeight),
     );
-    const handleOffset = GLYPH_HANDLE_OFFSET_CSS * handleUnitScale;
-    const handleRadius = GLYPH_HANDLE_RADIUS_CSS * handleUnitScale;
+    const handleOffsetCss = mobileEditorMedia.matches ? GLYPH_HANDLE_OFFSET_MOBILE_CSS : GLYPH_HANDLE_OFFSET_CSS;
+    const handleRadiusCss = mobileEditorMedia.matches ? GLYPH_HANDLE_RADIUS_MOBILE_CSS : GLYPH_HANDLE_RADIUS_CSS;
+    const handleHitRadiusCss = mobileEditorMedia.matches ? GLYPH_HANDLE_HIT_RADIUS_MOBILE_CSS : GLYPH_HANDLE_RADIUS_CSS;
+    const handleOffset = handleOffsetCss * handleUnitScale;
+    const handleRadius = handleRadiusCss * handleUnitScale;
+    const handleHitRadius = handleHitRadiusCss * handleUnitScale;
     const rotateHandle = {
       x: topCenter.x + stemVector.x / stemLength * handleOffset,
       y: topCenter.y + stemVector.y / stemLength * handleOffset,
@@ -2260,6 +2826,12 @@
     ui.glyphRotateStem.setAttribute("y1", topCenter.y);
     ui.glyphRotateStem.setAttribute("x2", rotateHandle.x);
     ui.glyphRotateStem.setAttribute("y2", rotateHandle.y);
+    ui.glyphRotateHitArea.setAttribute("cx", rotateHandle.x);
+    ui.glyphRotateHitArea.setAttribute("cy", rotateHandle.y);
+    ui.glyphRotateHitArea.setAttribute("r", handleHitRadius);
+    ui.glyphScaleHitArea.setAttribute("cx", scaleHandle.x);
+    ui.glyphScaleHitArea.setAttribute("cy", scaleHandle.y);
+    ui.glyphScaleHitArea.setAttribute("r", handleHitRadius);
     ui.glyphRotateHandle.setAttribute("cx", rotateHandle.x);
     ui.glyphRotateHandle.setAttribute("cy", rotateHandle.y);
     ui.glyphRotateHandle.setAttribute("r", handleRadius);
@@ -2282,16 +2854,28 @@
     state.selectedGlyphKey = key || null;
     syncGlyphTransformUi();
     const record = selectedGlyphRecord();
-    ui.materialAnnouncement.textContent = record
-      ? `已选中字符 ${record.glyph}，第 ${state.glyphs.indexOf(record) + 1} 个，共 ${state.glyphs.length} 个`
-      : "已取消字符选择";
+    if (record) {
+      setLocalizedText(ui.materialAnnouncement, "announce.glyphSelected", {
+        glyph: record.glyph,
+        index: state.glyphs.indexOf(record) + 1,
+        count: state.glyphs.length,
+      });
+    } else {
+      setLocalizedText(ui.materialAnnouncement, "announce.glyphCleared");
+    }
     ui.canvas.focus({ preventScroll: true });
   }
 
   function announceGlyphTransform(record) {
     if (!record) return;
     const transform = glyphTransformForKey(record.key);
-    ui.materialAnnouncement.textContent = `字符 ${record.glyph}：X ${Math.round(transform.x)}，Y ${Math.round(transform.y)}，旋转 ${Math.round(transform.rotation)} 度，缩放 ${Math.round(transform.scale * 100)}%`;
+    setLocalizedText(ui.materialAnnouncement, "announce.glyphTransform", {
+      glyph: record.glyph,
+      x: Math.round(transform.x),
+      y: Math.round(transform.y),
+      rotation: Math.round(transform.rotation),
+      scale: Math.round(transform.scale * 100),
+    });
   }
 
   function activeGestureTransform(record) {
@@ -2316,7 +2900,7 @@
   let gestureBakeTimer = 0;
   function scheduleGestureBake() {
     window.clearTimeout(gestureBakeTimer);
-    ui.renderStatus.textContent = "WAITING FOR GLYPH BAKE";
+    setLocalizedText(ui.renderStatus, "status.waitingGlyphBake");
     gestureBakeTimer = window.setTimeout(() => {
       gestureBakeTimer = 0;
       if (!glyphGesture || glyphGesture.revision === glyphGesture.bakedRevision) return;
@@ -2422,7 +3006,7 @@
   }
 
   function measureLine(glyphs, fontSize) {
-    sourceContext.font = `900 ${fontSize}px ${activeDisplayFont()}`;
+    sourceContext.font = `${activeDisplayFontWeight()} ${fontSize}px ${activeDisplayFont()}`;
     return glyphs.reduce(
       (total, glyph, index) => total + sourceContext.measureText(glyph).width + (index ? state.tracking : 0),
       0,
@@ -2730,7 +3314,7 @@
     );
     uploadNormalMap(normalPixels);
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
-    ui.renderStatus.textContent = "NORMAL BAKE READY";
+    setLocalizedText(ui.renderStatus, "status.normalBakeReady");
     render();
   }
 
@@ -2881,13 +3465,17 @@
     return pixels;
   }
   function rebuildTextures() {
+    if (activePreset().mode === 1 && ensureDotDisplayFont() === "loading") {
+      setLocalizedText(ui.renderStatus, "status.loadingDotFont");
+      return;
+    }
     const startedAt = performance.now();
     cachedNormalBake = null;
     bakedDisplayFont = activeDisplayFont();
     bakedTracking = state.tracking;
-    ui.renderStatus.textContent = "BUILDING SDF";
-    const rawLines = state.text.replace(/\r/g, "").split("\n").slice(0, 3);
-    const lines = rawLines.map((line) => segmentText(line).slice(0, 18));
+    setLocalizedText(ui.renderStatus, "status.buildingSdf");
+    const rawLines = state.text.replace(/\r/g, "").split("\n").slice(0, MAX_TEXT_LINES);
+    const lines = rawLines.map((line) => segmentText(line).slice(0, MAX_GLYPHS_PER_LINE));
     const glyphKeys = assignGlyphKeys(lines);
     const layout = fitLayout(lines);
     const lineHeightPx = layout.fontSize * state.lineHeight;
@@ -2895,7 +3483,7 @@
 
     sourceContext.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
     idContext.clearRect(0, 0, TEXTURE_WIDTH, TEXTURE_HEIGHT);
-    sourceContext.font = `900 ${layout.fontSize}px ${bakedDisplayFont}`;
+    sourceContext.font = `${activeDisplayFontWeight()} ${layout.fontSize}px ${bakedDisplayFont}`;
     sourceContext.textBaseline = "alphabetic";
     sourceContext.fillStyle = "#ffffff";
 
@@ -3073,9 +3661,11 @@
     gl.bindTexture(gl.TEXTURE_2D, normalTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, TEXTURE_WIDTH, TEXTURE_HEIGHT, 0, gl.RGBA, gl.UNSIGNED_BYTE, normalPixels);
 
-    ui.glyphReadout.textContent = `${String(state.glyphs.length).padStart(2, "0")} GLYPHS`;
+    setLocalizedText(ui.glyphReadout, "unit.glyphs", {
+      value: String(state.glyphs.length).padStart(2, "0"),
+    });
     ui.buildTime.textContent = `${Math.round(performance.now() - startedAt)} MS`;
-    ui.renderStatus.textContent = "BAKE READY";
+    setLocalizedText(ui.renderStatus, "status.bakeReady");
     if (glyphGesture) glyphGesture.bakedRevision = glyphGesture.revision;
     syncGlyphTransformUi();
     render();
@@ -3241,7 +3831,7 @@
     window.clearTimeout(rebuildTimer);
     window.clearTimeout(normalBakeTimer);
     normalBakeTimer = 0;
-    ui.renderStatus.textContent = "WAITING FOR INPUT";
+    setLocalizedText(ui.renderStatus, "status.waitingInput");
     geometryRebuildPending = true;
     rebuildTimer = window.setTimeout(() => {
       rebuildTimer = 0;
@@ -3253,7 +3843,7 @@
   function scheduleNormalBake() {
     if (geometryRebuildPending) return;
     window.clearTimeout(normalBakeTimer);
-    ui.renderStatus.textContent = "WAITING FOR NORMAL BAKE";
+    setLocalizedText(ui.renderStatus, "status.waitingNormalBake");
     normalBakeTimer = window.setTimeout(() => {
       normalBakeTimer = 0;
       rebuildNormalTexture();
@@ -3264,6 +3854,8 @@
     state.debugId = debugId;
     ui.materialViewButton.classList.toggle("is-active", !debugId);
     ui.idViewButton.classList.toggle("is-active", debugId);
+    ui.materialViewButton.setAttribute("aria-pressed", String(!debugId));
+    ui.idViewButton.setAttribute("aria-pressed", String(debugId));
     render();
   }
 
@@ -3282,6 +3874,7 @@
 
   function syncControls() {
     ui.textInput.value = state.text;
+    syncTextInputMeta();
     ui.trackingInput.value = String(state.tracking);
     ui.lineHeightInput.value = String(state.lineHeight);
     ui.edgeWidthInput.value = String(state.edgeWidth);
@@ -3322,7 +3915,7 @@
     ui.reflectionOffsetYValue.value = `${state.reflectionOffsetY > 0 ? "+" : ""}${state.reflectionOffsetY}%`;
     ui.liquidWarpValue.value = `${state.liquidWarp}%`;
     ui.dotPitchValue.value = `${state.dotPitch} PX`;
-    ui.dotOutlineLayersValue.value = `${state.dotOutlineLayers} LAYERS`;
+    ui.dotOutlineLayersValue.value = t("unit.layers", { value: state.dotOutlineLayers });
     ui.perspectiveAngleValue.value = `${state.perspectiveAngle}°`;
     ui.glitchStrengthValue.value = `${state.glitchStrength}%`;
     ui.vhsScanlineSpacingValue.value = `${state.vhsScanlineSpacing} PX`;
@@ -3332,8 +3925,25 @@
     ui.sceneDetailValue.value = `${state.sceneDetail}%`;
   }
 
+  function syncTextInputMeta() {
+    const value = ui.textInput.value;
+    const lines = value.replace(/\r/g, "").split("\n");
+    const hasOverflow = lines.length > MAX_TEXT_LINES
+      || lines.some((line) => segmentText(line).length > MAX_GLYPHS_PER_LINE);
+    setLocalizedText(ui.textInputMeta, "type.textMeta", {
+      count: value.length,
+      max: MAX_TEXT_LENGTH,
+      lines: value ? lines.length : 0,
+      maxLines: MAX_TEXT_LINES,
+    });
+    setLocalizedText(ui.textInputHint, hasOverflow ? "type.textOverflow" : "type.textHint");
+    ui.textInput.setAttribute("aria-invalid", String(hasOverflow));
+    ui.textInput.closest(".text-control-primary")?.classList.toggle("has-text-overflow", hasOverflow);
+  }
+
   ui.textInput.addEventListener("input", (event) => {
     state.text = event.currentTarget.value;
+    syncTextInputMeta();
     scheduleRebuild();
   });
   ui.trackingInput.addEventListener("input", (event) => {
@@ -3359,7 +3969,7 @@
     [ui.reflectionOffsetYInput, "reflectionOffsetY", ui.reflectionOffsetYValue, (value) => `${value > 0 ? "+" : ""}${value}%`],
     [ui.liquidWarpInput, "liquidWarp", ui.liquidWarpValue, (value) => `${value}%`],
     [ui.dotPitchInput, "dotPitch", ui.dotPitchValue, (value) => `${value} PX`],
-    [ui.dotOutlineLayersInput, "dotOutlineLayers", ui.dotOutlineLayersValue, (value) => `${value} LAYERS`],
+    [ui.dotOutlineLayersInput, "dotOutlineLayers", ui.dotOutlineLayersValue, (value) => t("unit.layers", { value })],
     [ui.perspectiveAngleInput, "perspectiveAngle", ui.perspectiveAngleValue, (value) => `${value}°`],
     [ui.glitchStrengthInput, "glitchStrength", ui.glitchStrengthValue, (value) => `${value}%`],
     [ui.vhsScanlineSpacingInput, "vhsScanlineSpacing", ui.vhsScanlineSpacingValue, (value) => `${value} PX`],
@@ -3413,7 +4023,15 @@
     const record = selectedGlyphRecord();
     if (record) beginGlyphGesture(event, "rotate", record);
   });
+  ui.glyphRotateHitArea.addEventListener("pointerdown", (event) => {
+    const record = selectedGlyphRecord();
+    if (record) beginGlyphGesture(event, "rotate", record);
+  });
   ui.glyphScaleHandle.addEventListener("pointerdown", (event) => {
+    const record = selectedGlyphRecord();
+    if (record) beginGlyphGesture(event, "scale", record);
+  });
+  ui.glyphScaleHitArea.addEventListener("pointerdown", (event) => {
     const record = selectedGlyphRecord();
     if (record) beginGlyphGesture(event, "scale", record);
   });
@@ -3451,7 +4069,7 @@
     state.glyphTransforms.clear();
     syncGlyphTransformUi();
     scheduleRebuild();
-    ui.materialAnnouncement.textContent = "已重置全部字符布局";
+    setLocalizedText(ui.materialAnnouncement, "announce.glyphResetAll");
   });
   ui.canvas.addEventListener("keydown", (event) => {
     if (event.key === "PageDown" || event.key === "PageUp" || event.key === "]" || event.key === "[") {
@@ -3506,20 +4124,19 @@
     state.debugId = false;
     ui.materialViewButton.classList.add("is-active");
     ui.idViewButton.classList.remove("is-active");
+    ui.materialViewButton.setAttribute("aria-pressed", "true");
+    ui.idViewButton.setAttribute("aria-pressed", "false");
     applyPresetBake();
     if (activePreset().mode !== 1) loadPresetReflection(state.activePreset);
   });
   window.addEventListener("resize", render, { passive: true });
 
-  const rendererInfo = gl.getExtension("WEBGL_debug_renderer_info");
-  const renderer = rendererInfo
-    ? gl.getParameter(rendererInfo.UNMASKED_RENDERER_WEBGL)
-    : gl.getParameter(gl.RENDERER);
-  ui.gpuStatus.textContent = `WEBGL 2 · ${renderer}`;
+  setLocalizedText(ui.gpuStatus, "status.webglReady");
   buildNoiseTexture();
   buildReflectionGallery().catch((error) => {
     ui.renderError.hidden = false;
-    ui.renderError.textContent = error.message;
+    if (error?.i18nKey) setLocalizedText(ui.renderError, error.i18nKey, error.i18nParams);
+    else setLocalizedMessage(ui.renderError, localizedErrorMessage(error));
   });
   syncControls();
   syncPresetSelection();

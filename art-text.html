@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="zh-CN" data-material="vhs">
+<html lang="en" data-language="en" data-material="vhs" data-mobile-panel="type">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
     <meta name="color-scheme" content="dark" />
     <title>Y2K Type Material Lab</title>
-    <link rel="stylesheet" href="./art-text.css?v=12" />
+    <link rel="stylesheet" href="./art-text.css?v=38" />
   </head>
   <body>
     <main class="app-shell">
@@ -13,110 +13,43 @@
         <div class="brand-lockup">
           <span class="brand-mark">T//M</span>
           <div>
-            <strong>TYPE MATERIAL</strong>
-            <span>Y2K ART-TEXT EDITOR · V1</span>
+            <strong data-i18n="brand.title">TYPE MATERIAL</strong>
+            <span data-i18n="brand.subtitle">Y2K ART-TEXT EDITOR</span>
           </div>
         </div>
-        <div class="runtime-pill">
+        <div class="runtime-pill" role="status" aria-live="polite" aria-atomic="true" aria-label="Render status" data-i18n-aria-label="aria.renderStatus">
           <i aria-hidden="true"></i>
-          <span id="gpuStatus">INITIALIZING WEBGL 2</span>
+          <span id="gpuStatus">WEBGL 2 · STARTING</span>
         </div>
         <div class="top-actions">
-          <a href="./index.html" class="ghost-action">MOTION LAB</a>
-          <button class="ghost-action" id="resetButton" type="button" aria-label="重置当前材质参数">RESET</button>
-          <button class="export-action" type="button" disabled>PNG · NEXT</button>
+          <button class="ghost-action language-toggle" id="languageToggle" type="button" aria-label="Switch to Chinese" title="Switch to Chinese">
+            <span class="language-option" data-language-option="zh" lang="zh-CN">中</span>
+            <span class="language-divider" aria-hidden="true">/</span>
+            <span class="language-option" data-language-option="en" lang="en">EN</span>
+          </button>
+          <a href="./index.html" class="ghost-action motion-action" data-i18n="header.motionLab">MOTION LAB</a>
+          <button class="ghost-action" id="resetButton" type="button" aria-label="Reset current material settings" data-i18n="common.reset" data-i18n-aria-label="aria.resetMaterial">RESET</button>
         </div>
       </header>
 
       <section class="editor-grid">
-        <aside class="preset-rail" aria-label="材质预设与生成纹理">
-          <div class="rail-title">
-            <span>01</span>
-            <div><strong>SURFACES</strong><small>SELECT A MATERIAL</small></div>
-          </div>
-
-          <div class="surface-switcher" role="group" aria-label="材质预设">
-            <button class="surface-button is-active" type="button" data-material-preset="vhs" aria-pressed="true">
-              <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/vhs-chrome.webp?v=1" alt="" /></span>
-              <span class="surface-copy"><b>VHS</b><span>CHROME</span></span>
-            </button>
-            <button class="surface-button" type="button" data-material-preset="dot" aria-pressed="false">
-              <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/dot-glitch.webp?v=1" alt="" /></span>
-              <span class="surface-copy"><b>DOT</b><span>GLITCH</span></span>
-            </button>
-            <button class="surface-button" type="button" data-material-preset="liquid" aria-pressed="false">
-              <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/liquid-chrome.webp?v=1" alt="" /></span>
-              <span class="surface-copy"><b>LIQUID</b><span>CHROME</span></span>
-            </button>
-          </div>
-
-          <p class="sr-only" id="materialAnnouncement" aria-live="polite"></p>
-
-          <section class="reflection-library" aria-labelledby="reflectionLibraryTitle">
-            <header class="asset-library-title">
-              <div><strong id="reflectionLibraryTitle">REFLECTION FIELDS</strong><small>SELECT A LIGHT SHAPE</small></div>
-              <span>05</span>
-            </header>
-            <div class="reflection-grid">
-              <button class="reflection-card is-active" type="button" data-reflection-style="rose" aria-pressed="true">
-                <canvas width="224" height="224" aria-hidden="true"></canvas><span>ROSE CITADEL</span>
-              </button>
-              <button class="reflection-card" type="button" data-reflection-style="arctic" aria-pressed="false">
-                <canvas width="224" height="224" aria-hidden="true"></canvas><span>ICE CITADEL</span>
-              </button>
-              <button class="reflection-card" type="button" data-reflection-style="sunset" aria-pressed="false">
-                <canvas width="224" height="224" aria-hidden="true"></canvas><span>SOLAR OBSIDIAN</span>
-              </button>
-              <button class="reflection-card" type="button" data-reflection-style="prism" aria-pressed="false">
-                <canvas width="224" height="224" aria-hidden="true"></canvas><span>PRISM MERCURY</span>
-              </button>
-              <button class="reflection-card" type="button" data-reflection-style="neon" aria-pressed="false">
-                <canvas width="224" height="224" aria-hidden="true"></canvas><span>NEON MONSOON</span>
-              </button>
-            </div>
-            <div class="reflection-url-control reflection-library-url" data-materials="liquid vhs">
-              <label for="customReflectionUrlInput">CUSTOM REFLECTION URL</label>
-              <div>
-                <input id="customReflectionUrlInput" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… / data:image… / blob:…" />
-                <button id="applyReflectionUrlButton" type="button">APPLY</button>
-              </div>
-              <p id="customReflectionStatus" role="status" aria-live="polite"></p>
-            </div>
-          </section>
-
-          <section class="asset-library" aria-labelledby="assetLibraryTitle">
-            <header class="asset-library-title">
-              <div><strong id="assetLibraryTitle">BAKED MAP SET</strong><small>OFFLINE 1600×900 SOURCES</small></div>
-              <span>08 VIEWS</span>
-            </header>
-            <div class="asset-grid">
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="flow" aria-hidden="true"></canvas><figcaption><b>FLOW NOISE</b><span>RG8 · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="grain" aria-hidden="true"></canvas><figcaption><b>FILM GRAIN</b><span>B8 · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="coverage" aria-hidden="true"></canvas><figcaption><b>COVERAGE</b><span>B8</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="body" aria-hidden="true"></canvas><figcaption><b>BODY HEIGHT</b><span>RG PACKED · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="clip-sdf" aria-hidden="true"></canvas><figcaption><b>CLIP SDF</b><span>RG PACKED · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="shading-sdf" aria-hidden="true"></canvas><figcaption><b>SHADING SDF</b><span>BA PACKED · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="normal" aria-hidden="true"></canvas><figcaption><b>NORMAL XY</b><span>RGBA PACKED · VIS</span></figcaption></figure>
-              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b>SEMANTIC ID</b><span>G8 ID · RB ROT</span></figcaption></figure>
-            </div>
-          </section>
-        </aside>
-
-        <section class="canvas-column" aria-label="艺术字画布">
+        <section class="canvas-column" aria-label="Art-text canvas" data-i18n-aria-label="aria.canvasRegion">
           <div class="canvas-toolbar">
-            <div><span>ARTBOARD</span><strong>1600 × 900</strong></div>
-            <div class="view-actions" role="group" aria-label="画布视图">
-              <button class="view-button is-active" id="materialViewButton" type="button">MATERIAL</button>
-              <button class="view-button" id="idViewButton" type="button">SEMANTIC ID</button>
+            <div><span data-i18n="canvas.artboard">ARTBOARD</span><strong>1600 × 900</strong></div>
+            <div class="view-actions" role="group" aria-label="Canvas view" data-i18n-aria-label="aria.canvasView">
+              <button class="view-button is-active" id="materialViewButton" type="button" aria-pressed="true" data-i18n="canvas.material">MATERIAL</button>
+              <button class="view-button" id="idViewButton" type="button" aria-pressed="false" data-i18n="canvas.semanticId">SEMANTIC ID</button>
             </div>
-            <span id="glyphReadout">00 GLYPHS</span>
+            <span id="glyphReadout" hidden>00 GLYPHS</span>
           </div>
 
           <div class="artboard-frame">
-            <canvas id="artCanvas" tabindex="0" aria-label="艺术字预览，可点击字符并拖动编辑" aria-describedby="glyphTransformHelp"></canvas>
+            <canvas id="artCanvas" tabindex="0" aria-label="Art-text preview. Click and drag a character to edit it." aria-describedby="glyphTransformHelp"></canvas>
             <svg id="glyphTransformOverlay" class="glyph-transform-overlay" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true" hidden>
               <polygon id="glyphSelectionBox" class="glyph-selection-box" points="" />
               <line id="glyphRotateStem" class="glyph-rotate-stem" x1="0" y1="0" x2="0" y2="0" />
+              <circle id="glyphRotateHitArea" class="glyph-transform-hit-area" cx="0" cy="0" r="12" data-glyph-handle="rotate" />
+              <circle id="glyphScaleHitArea" class="glyph-transform-hit-area" cx="0" cy="0" r="12" data-glyph-handle="scale" />
               <circle id="glyphRotateHandle" class="glyph-transform-handle glyph-rotate-handle" cx="0" cy="0" r="12" data-glyph-handle="rotate" />
               <circle id="glyphScaleHandle" class="glyph-transform-handle glyph-scale-handle" cx="0" cy="0" r="12" data-glyph-handle="scale" />
             </svg>
@@ -125,120 +58,245 @@
             <div class="corner-mark bottom-left" aria-hidden="true"></div>
             <div class="corner-mark bottom-right" aria-hidden="true"></div>
             <div id="renderError" class="render-error" hidden></div>
-            <p id="glyphTransformHelp" class="sr-only">点击字符选中并拖动。洋红手柄旋转，青色手柄缩放。Page Up 和 Page Down 切换字符，方向键微调位置，Alt 加方向键调整旋转或缩放。</p>
+            <p id="glyphTransformHelp" class="sr-only" data-i18n="glyph.help">Click and drag a character. Use the magenta handle to rotate and the cyan handle to scale. Page Up and Page Down switch characters; arrow keys move; Alt plus arrow keys rotate or scale.</p>
           </div>
 
-          <footer class="canvas-status">
+          <div id="glyphInteractionGuide" class="glyph-interaction-guide" aria-hidden="true">
+            <span data-i18n="glyph.click">CLICK CHARACTER</span>
+            <span><svg class="interaction-icon move-icon" viewBox="0 0 16 16" aria-hidden="true"><path d="M2 8h12M5 5 2 8l3 3m6-6 3 3-3 3" /></svg><b data-i18n="glyph.move">MOVE</b></span>
+            <span><i class="interaction-icon rotate-icon" aria-hidden="true"></i><b data-i18n="glyph.rotate">ROTATE</b></span>
+            <span><i class="interaction-icon scale-icon" aria-hidden="true"></i><b data-i18n="glyph.scale">SCALE</b></span>
+          </div>
+
+          <footer class="canvas-status" hidden aria-hidden="true">
             <span><i class="status-dot"></i><b id="renderStatus">BUILDING SDF</b></span>
             <span>1600×900 BAKE · MERGED SDF · SEMANTIC ID</span>
             <span id="buildTime">0 MS</span>
           </footer>
         </section>
 
-        <aside class="inspector" aria-label="艺术字参数">
-          <div class="rail-title inspector-title">
-            <span>02</span>
-            <div><strong>INSPECTOR</strong><small id="inspectorMaterialName">VHS//CHROME</small></div>
+        <div class="mobile-preset-switcher" role="group" aria-label="Quick material preset switcher" data-i18n-aria-label="aria.quickPresets">
+          <button class="mobile-preset-button is-active" type="button" data-material-preset="vhs" aria-pressed="true" aria-label="Select VHS Chrome material preset">
+            <span class="mobile-preset-swatch" aria-hidden="true"><img src="./assets/material-previews/vhs-chrome-square.webp?v=5" alt="" width="512" height="512" decoding="async" /></span>
+            <span class="mobile-preset-copy"><b>VHS</b><small>CHROME</small></span>
+          </button>
+          <button class="mobile-preset-button" type="button" data-material-preset="dot" aria-pressed="false" aria-label="Select Dot Glitch material preset">
+            <span class="mobile-preset-swatch" aria-hidden="true"><img src="./assets/material-previews/dot-glitch-square.webp?v=5" alt="" width="512" height="512" decoding="async" /></span>
+            <span class="mobile-preset-copy"><b>DOT</b><small>GLITCH</small></span>
+          </button>
+          <button class="mobile-preset-button" type="button" data-material-preset="liquid" aria-pressed="false" aria-label="Select Liquid Chrome material preset">
+            <span class="mobile-preset-swatch" aria-hidden="true"><img src="./assets/material-previews/liquid-chrome-square.webp?v=7" alt="" width="512" height="512" decoding="async" /></span>
+            <span class="mobile-preset-copy"><b>LIQUID</b><small>CHROME</small></span>
+          </button>
+        </div>
+
+        <nav class="mobile-panel-tabs" role="tablist" aria-label="Compact editor tools" data-i18n-aria-label="aria.compactTools">
+          <button id="mobileTypeTab" class="mobile-panel-tab is-active" type="button" role="tab" aria-controls="typographyControls" aria-selected="true" data-mobile-panel-tab="type">
+            <span>01</span><b data-i18n="mobile.type">TYPE</b><small data-i18n="mobile.text">TEXT</small>
+          </button>
+          <button id="mobileSurfaceTab" class="mobile-panel-tab" type="button" role="tab" aria-controls="surfacePanel" aria-selected="false" tabindex="-1" data-mobile-panel-tab="surface">
+            <span>02</span><b data-i18n="mobile.field">FIELD</b><small data-i18n="mobile.light">LIGHT</small>
+          </button>
+          <button id="mobileMaterialTab" class="mobile-panel-tab" type="button" role="tab" aria-controls="materialControls" aria-selected="false" tabindex="-1" data-mobile-panel-tab="material">
+            <span>03</span><b data-i18n="mobile.material">MATERIAL</b><small data-i18n="mobile.surface">SURFACE</small>
+          </button>
+          <button id="mobileFxTab" class="mobile-panel-tab" type="button" role="tab" aria-controls="fxControls" aria-selected="false" tabindex="-1" data-mobile-panel-tab="fx">
+            <span>04</span><b data-i18n="mobile.fx">FX</b><small data-i18n="mobile.effects">EFFECTS</small>
+          </button>
+        </nav>
+
+        <p class="sr-only" id="materialAnnouncement" aria-live="polite"></p>
+
+        <aside id="surfacePanel" class="preset-rail" aria-label="Material presets, reflection fields, and diagnostic textures" data-i18n-aria-label="aria.surfacePanel">
+          <div class="rail-title">
+            <span>01</span>
+            <div><strong data-i18n="surface.lab">MATERIAL LAB</strong><small data-i18n="surface.build">BUILD THE SURFACE</small></div>
           </div>
 
-          <section class="control-section">
-            <div class="section-title"><span>TYPOGRAPHY</span><em>01</em></div>
-            <label class="text-control" for="textInput">
-              <span>TEXT</span>
-              <textarea id="textInput" rows="2" maxlength="36" spellcheck="false">Y2K
+          <section class="preset-picker" aria-labelledby="presetPickerTitle">
+            <header class="preset-picker-title">
+              <div><span data-i18n="common.step1">STEP 01</span><strong id="presetPickerTitle" data-i18n="surface.presets">MATERIAL PRESETS</strong><small data-i18n="surface.presetHelp">CLICK A COVER TO SWITCH THE FULL LOOK</small></div>
+            </header>
+            <div class="surface-switcher" role="group" aria-label="Material presets">
+              <button class="surface-button is-active" type="button" data-material-preset="vhs" aria-pressed="true" aria-label="Select VHS Chrome material preset">
+                <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/vhs-chrome-square.webp?v=5" alt="" width="512" height="512" decoding="async" /></span>
+                <span class="surface-copy"><b>VHS</b><span>CHROME</span></span>
+                <span class="surface-state" aria-hidden="true" data-i18n="common.selected">SELECTED</span>
+              </button>
+              <button class="surface-button" type="button" data-material-preset="dot" aria-pressed="false" aria-label="Select Dot Glitch material preset">
+                <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/dot-glitch-square.webp?v=5" alt="" width="512" height="512" decoding="async" /></span>
+                <span class="surface-copy"><b>DOT</b><span>GLITCH</span></span>
+                <span class="surface-state" aria-hidden="true" data-i18n="common.selected">SELECTED</span>
+              </button>
+              <button class="surface-button" type="button" data-material-preset="liquid" aria-pressed="false" aria-label="Select Liquid Chrome material preset">
+                <span class="surface-preview" aria-hidden="true"><img src="./assets/material-previews/liquid-chrome-square.webp?v=7" alt="" width="512" height="512" decoding="async" /></span>
+                <span class="surface-copy"><b>LIQUID</b><span>CHROME</span></span>
+                <span class="surface-state" aria-hidden="true" data-i18n="common.selected">SELECTED</span>
+              </button>
+            </div>
+          </section>
+
+          <section class="reflection-library" aria-labelledby="reflectionLibraryTitle">
+            <header class="asset-library-title reflection-library-title">
+              <div><span data-i18n="common.step2">STEP 02</span><strong id="reflectionLibraryTitle" data-i18n="reflection.title">REFLECTION FIELD</strong><small data-i18n="reflection.help">SECONDARY LIGHTING FOR VHS / LIQUID</small></div>
+            </header>
+            <div class="reflection-grid">
+              <button class="reflection-card is-active" type="button" data-reflection-style="rose" aria-pressed="true">
+                <canvas width="224" height="224" aria-hidden="true"></canvas><span class="reflection-name">ROSE CITADEL</span><span class="reflection-state" aria-hidden="true" data-i18n="common.active">ACTIVE</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="arctic" aria-pressed="false">
+                <canvas width="224" height="224" aria-hidden="true"></canvas><span class="reflection-name">ICE CITADEL</span><span class="reflection-state" aria-hidden="true" data-i18n="common.active">ACTIVE</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="sunset" aria-pressed="false">
+                <canvas width="224" height="224" aria-hidden="true"></canvas><span class="reflection-name">SOLAR OBSIDIAN</span><span class="reflection-state" aria-hidden="true" data-i18n="common.active">ACTIVE</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="prism" aria-pressed="false">
+                <canvas width="224" height="224" aria-hidden="true"></canvas><span class="reflection-name">PRISM MERCURY</span><span class="reflection-state" aria-hidden="true" data-i18n="common.active">ACTIVE</span>
+              </button>
+              <button class="reflection-card" type="button" data-reflection-style="neon" aria-pressed="false">
+                <canvas width="224" height="224" aria-hidden="true"></canvas><span class="reflection-name">NEON MONSOON</span><span class="reflection-state" aria-hidden="true" data-i18n="common.active">ACTIVE</span>
+              </button>
+            </div>
+            <div class="reflection-url-control reflection-library-url" data-materials="liquid vhs">
+              <label for="customReflectionUrlInput" data-i18n="reflection.customUrl">CUSTOM REFLECTION URL</label>
+              <div>
+                <input id="customReflectionUrlInput" type="url" inputmode="url" autocomplete="off" spellcheck="false" placeholder="https://… / data:image… / blob:…" data-i18n-placeholder="reflection.urlPlaceholder" />
+                <button id="applyReflectionUrlButton" type="button" data-i18n="common.apply">APPLY</button>
+              </div>
+              <p id="customReflectionStatus" role="status" aria-live="polite"></p>
+            </div>
+          </section>
+
+          <p class="reflection-unavailable" data-materials="dot" hidden><b>DOT GLITCH</b><span data-i18n="reflection.unavailable">THIS PRESET DOES NOT USE A REFLECTION FIELD.</span></p>
+
+          <details class="asset-library diagnostics-library" open>
+            <summary class="asset-library-title diagnostics-summary">
+              <span class="diagnostics-summary-copy"><span data-i18n="textures.eyebrow">TEXTURES</span><strong data-i18n="textures.title">MATERIAL MAPS</strong><small data-i18n="textures.help">SURFACE TEXTURE STACK</small></span>
+            </summary>
+            <div class="asset-grid">
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="flow" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.flow">FLOW NOISE</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="grain" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.grain">FILM GRAIN</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="coverage" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.coverage">COVERAGE</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="body" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.body">BODY HEIGHT</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="clip-sdf" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.clipSdf">CLIP SDF</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="shading-sdf" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.shadingSdf">SHADING SDF</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="normal" aria-hidden="true"></canvas><figcaption><b data-i18n="textures.normal">NORMAL XY</b></figcaption></figure>
+              <figure class="asset-card"><canvas width="224" height="126" data-generated-asset="glyph-id" aria-hidden="true"></canvas><figcaption><b data-i18n="canvas.semanticId">SEMANTIC ID</b></figcaption></figure>
+            </div>
+          </details>
+        </aside>
+
+        <aside id="inspectorPanel" class="inspector" aria-label="Art-text controls" data-i18n-aria-label="aria.inspector">
+          <div class="rail-title inspector-title">
+            <span>02</span>
+            <div><strong data-i18n="inspector.title">INSPECTOR</strong><small id="inspectorMaterialName">VHS//CHROME</small></div>
+          </div>
+
+          <section id="typographyControls" class="control-section" aria-labelledby="typographyTitle">
+            <div class="section-title"><span id="typographyTitle" role="heading" aria-level="2" data-i18n="type.title">TEXT &amp; LAYOUT</span><em>01</em></div>
+            <div class="text-control text-control-primary">
+              <div class="text-control-head">
+                <label for="textInput" data-i18n="type.text">TEXT CONTENT</label>
+              </div>
+              <textarea id="textInput" rows="2" maxlength="36" spellcheck="false" aria-describedby="textInputHint textInputLimits">Y2K
 CHROME</textarea>
-            </label>
+              <div class="text-control-meta">
+                <small id="textInputHint" data-i18n="type.textHint">LIVE PREVIEW · ENTER FOR NEW LINE</small>
+                <span id="textInputMeta">10/36 CH · 2/3 LN</span>
+              </div>
+              <span id="textInputLimits" class="sr-only" data-i18n="type.textLimits">Up to 36 characters, 3 lines, and 18 characters per line.</span>
+            </div>
             <label class="range-control" for="trackingInput">
-              <span><b>TRACKING</b><output id="trackingValue">4 PX</output></span>
+              <span><b data-i18n="type.tracking">TRACKING</b><output id="trackingValue">4 PX</output></span>
               <input id="trackingInput" type="range" min="-8" max="32" value="4" step="1" />
             </label>
             <label class="range-control" for="lineHeightInput">
-              <span><b>LINE HEIGHT</b><output id="lineHeightValue">0.88×</output></span>
+              <span><b data-i18n="type.lineHeight">LINE HEIGHT</b><output id="lineHeightValue">0.88×</output></span>
               <input id="lineHeightInput" type="range" min="0.76" max="1.08" value="0.88" step="0.01" />
             </label>
             <section id="glyphTransformControls" class="glyph-transform-controls" aria-labelledby="glyphTransformTitle" hidden>
               <div class="glyph-transform-title">
-                <span id="glyphTransformTitle">SELECTED CHARACTER</span>
+                <span id="glyphTransformTitle" data-i18n="glyph.selected">SELECTED CHARACTER</span>
                 <strong id="selectedGlyphLabel">—</strong>
               </div>
               <div class="glyph-transform-grid">
                 <label for="glyphOffsetXInput"><span>X</span><input id="glyphOffsetXInput" type="number" step="1" /><em>PX</em></label>
                 <label for="glyphOffsetYInput"><span>Y</span><input id="glyphOffsetYInput" type="number" step="1" /><em>PX</em></label>
-                <label for="glyphRotationInput"><span>ROTATE</span><input id="glyphRotationInput" type="number" min="-180" max="180" step="1" /><em>°</em></label>
-                <label for="glyphScaleInput"><span>SCALE</span><input id="glyphScaleInput" type="number" min="20" max="300" step="1" /><em>%</em></label>
+                <label for="glyphRotationInput"><span data-i18n="glyph.rotate">ROTATE</span><input id="glyphRotationInput" type="number" min="-180" max="180" step="1" /><em>°</em></label>
+                <label for="glyphScaleInput"><span data-i18n="glyph.scale">SCALE</span><input id="glyphScaleInput" type="number" min="20" max="300" step="1" /><em>%</em></label>
               </div>
               <div class="glyph-transform-actions">
-                <button id="resetGlyphTransformButton" type="button">RESET CHARACTER</button>
-                <button id="resetAllGlyphTransformsButton" type="button" aria-label="重置全部字符布局">RESET ALL LAYOUT</button>
+                <button id="resetGlyphTransformButton" type="button" data-i18n="glyph.resetOne">RESET CHARACTER</button>
+                <button id="resetAllGlyphTransformsButton" type="button" aria-label="Reset all character layout" data-i18n="glyph.resetAll" data-i18n-aria-label="glyph.resetAll">RESET ALL LAYOUT</button>
               </div>
             </section>
           </section>
 
-          <section class="control-section">
-            <div class="section-title"><span>MATERIAL</span><em>02</em></div>
+          <section id="materialControls" class="control-section">
+            <div class="section-title"><span data-i18n="material.title">MATERIAL</span><em>02</em></div>
             <label class="range-control" for="edgeWidthInput" data-materials="liquid vhs">
-              <span><b>EDGE ROLL</b><output id="edgeWidthValue">8 PX</output></span>
+              <span><b data-i18n="material.edgeRoll">EDGE ROLL</b><output id="edgeWidthValue">8 PX</output></span>
               <input id="edgeWidthInput" type="range" min="3" max="14" value="8" step="1" />
             </label>
             <label class="range-control" for="bodyCrownInput" data-materials="liquid vhs">
-              <span><b>BODY CROWN</b><output id="bodyCrownValue">16</output></span>
+              <span><b data-i18n="material.bodyCrown">BODY CROWN</b><output id="bodyCrownValue">16</output></span>
               <input id="bodyCrownInput" type="range" min="6" max="24" value="16" step="1" />
             </label>
             <label class="range-control" for="faceCurveInput" data-materials="liquid vhs">
-              <span><b>FACE CURVE</b><output id="faceCurveValue">70%</output></span>
+              <span><b data-i18n="material.faceCurve">FACE CURVE</b><output id="faceCurveValue">70%</output></span>
               <input id="faceCurveInput" type="range" min="0" max="100" value="70" step="1" />
             </label>
             <label class="select-control" for="reflectionStyleSelect" data-materials="liquid vhs">
-              <span>REFLECTION FIELD</span>
+              <span data-i18n="reflection.title">REFLECTION FIELD</span>
               <select id="reflectionStyleSelect">
                 <option value="rose">ROSE CITADEL</option>
                 <option value="arctic">ICE CITADEL</option>
                 <option value="sunset">SOLAR OBSIDIAN</option>
                 <option value="prism">PRISM MERCURY</option>
                 <option value="neon">NEON MONSOON</option>
-                <option value="custom">CUSTOM URL…</option>
+                <option value="custom" data-i18n="reflection.customOption">CUSTOM URL…</option>
               </select>
             </label>
             <label class="range-control" for="envCoverageInput" data-materials="liquid vhs">
-              <span><b>ENV COVERAGE</b><output id="envCoverageValue">180%</output></span>
+              <span><b data-i18n="material.envCoverage">ENV COVERAGE</b><output id="envCoverageValue">180%</output></span>
               <input id="envCoverageInput" type="range" min="100" max="240" value="180" step="5" />
             </label>
             <div class="offset-controls" data-materials="liquid vhs">
               <label for="reflectionOffsetXInput">
-                <span><b>OFFSET X</b><output id="reflectionOffsetXValue">0%</output></span>
+                <span><b data-i18n="material.offsetX">OFFSET X</b><output id="reflectionOffsetXValue">0%</output></span>
                 <input id="reflectionOffsetXInput" type="range" min="-50" max="50" value="0" step="1" />
               </label>
               <label for="reflectionOffsetYInput">
-                <span><b>OFFSET Y</b><output id="reflectionOffsetYValue">0%</output></span>
+                <span><b data-i18n="material.offsetY">OFFSET Y</b><output id="reflectionOffsetYValue">0%</output></span>
                 <input id="reflectionOffsetYInput" type="range" min="-35" max="35" value="0" step="1" />
               </label>
             </div>
             <label class="range-control" for="reflectionInput" data-materials="liquid vhs">
-              <span><b>REFLECTIVITY</b><output id="reflectionValue">94%</output></span>
+              <span><b data-i18n="material.reflectivity">REFLECTIVITY</b><output id="reflectionValue">94%</output></span>
               <input id="reflectionInput" type="range" min="0" max="100" value="94" step="1" />
             </label>
             <label class="range-control" for="colorFieldInput" data-materials="liquid vhs">
-              <span><b>FIELD STRENGTH</b><output id="colorFieldValue">62%</output></span>
+              <span><b data-i18n="material.fieldStrength">FIELD STRENGTH</b><output id="colorFieldValue">62%</output></span>
               <input id="colorFieldInput" type="range" min="0" max="100" value="62" step="1" />
             </label>
             <label class="range-control" for="roughnessInput" data-materials="liquid vhs">
-              <span><b>ROUGHNESS</b><output id="roughnessValue">0%</output></span>
+              <span><b data-i18n="material.roughness">ROUGHNESS</b><output id="roughnessValue">0%</output></span>
               <input id="roughnessInput" type="range" min="0" max="100" value="0" step="1" />
             </label>
             <label class="color-control" for="baseColorInput" data-materials="liquid vhs">
-              <span><b>BASE COLOR</b><small>REFLECTION 0% 时显示</small></span>
+              <span><b data-i18n="material.baseColor">BASE COLOR</b><small data-i18n="material.baseColorHelp">VISIBLE AT 0% REFLECTIVITY</small></span>
               <input id="baseColorInput" type="color" value="#000000" />
             </label>
             <label class="range-control" for="liquidWarpInput" data-materials="liquid">
-              <span><b>LIQUID WARP</b><output id="liquidWarpValue">6%</output></span>
+              <span><b data-i18n="material.liquidWarp">LIQUID WARP</b><output id="liquidWarpValue">6%</output></span>
               <input id="liquidWarpInput" type="range" min="0" max="40" value="6" step="1" />
             </label>
             <label class="range-control" for="dotPitchInput" data-materials="dot">
-              <span><b>DOT SIZE</b><output id="dotPitchValue">12 PX</output></span>
+              <span><b data-i18n="material.dotSize">DOT SIZE</b><output id="dotPitchValue">12 PX</output></span>
               <input id="dotPitchInput" type="range" min="4" max="14" value="12" step="1" />
             </label>
             <label class="range-control" for="dotOutlineLayersInput" data-materials="dot">
-              <span><b>OUTLINE THICKNESS</b><output id="dotOutlineLayersValue">4 LAYERS</output></span>
+              <span><b data-i18n="material.outlineThickness">OUTLINE THICKNESS</b><output id="dotOutlineLayersValue">4 LAYERS</output></span>
               <input id="dotOutlineLayersInput" type="range" min="0" max="6" value="4" step="1" />
             </label>
             <label class="range-control" for="perspectiveAngleInput">
@@ -246,49 +304,49 @@ CHROME</textarea>
               <input id="perspectiveAngleInput" type="range" min="0" max="120" value="0" step="1" />
             </label>
             <label class="range-control" for="glitchStrengthInput" data-materials="dot">
-              <span><b>GLITCH</b><output id="glitchStrengthValue">82%</output></span>
+              <span><b data-i18n="material.glitch">GLITCH</b><output id="glitchStrengthValue">82%</output></span>
               <input id="glitchStrengthInput" type="range" min="0" max="100" value="82" step="1" />
             </label>
             <label class="range-control" for="vhsScanlineSpacingInput" data-materials="vhs">
-              <span><b>SCANLINE GAP</b><output id="vhsScanlineSpacingValue">8 PX</output></span>
+              <span><b data-i18n="material.scanlineGap">SCANLINE GAP</b><output id="vhsScanlineSpacingValue">8 PX</output></span>
               <input id="vhsScanlineSpacingInput" type="range" min="5" max="24" value="8" step="1" />
             </label>
             <label class="range-control" for="vhsScanlineStrengthInput" data-materials="vhs">
-              <span><b>SCANLINE</b><output id="vhsScanlineStrengthValue">28%</output></span>
+              <span><b data-i18n="material.scanline">SCANLINE</b><output id="vhsScanlineStrengthValue">28%</output></span>
               <input id="vhsScanlineStrengthInput" type="range" min="0" max="50" value="28" step="1" />
             </label>
             <label class="range-control" for="extrusionInput">
-              <span><b>DEPTH</b><output id="extrusionValue">8 PX</output></span>
+              <span><b data-i18n="material.depth">DEPTH</b><output id="extrusionValue">8 PX</output></span>
               <input id="extrusionInput" type="range" min="0" max="24" value="8" step="1" />
             </label>
           </section>
 
-          <section class="control-section">
-            <div class="section-title"><span>FX</span><em>03</em></div>
+          <section id="fxControls" class="control-section">
+            <div class="section-title"><span data-i18n="fx.title">FX</span><em>03</em></div>
             <label class="range-control" for="glowInput">
-              <span><b>EDGE GLOW</b><output id="glowValue">20%</output></span>
+              <span><b data-i18n="fx.edgeGlow">EDGE GLOW</b><output id="glowValue">20%</output></span>
               <input id="glowInput" type="range" min="0" max="100" value="20" step="1" />
             </label>
             <label class="range-control" for="sceneDetailInput">
-              <span><b>SCENE DETAIL</b><output id="sceneDetailValue">68%</output></span>
+              <span><b data-i18n="fx.sceneDetail">SCENE DETAIL</b><output id="sceneDetailValue">68%</output></span>
               <input id="sceneDetailInput" type="range" min="0" max="100" value="68" step="1" />
             </label>
             <div class="color-row">
-              <label for="cyanInput"><span>EDGE</span><input id="cyanInput" type="color" value="#39f5ff" /></label>
-              <label for="pinkInput"><span>REFLECT</span><input id="pinkInput" type="color" value="#ff2bd6" /></label>
+              <label for="cyanInput"><span data-i18n="fx.edge">EDGE</span><input id="cyanInput" type="color" value="#39f5ff" /></label>
+              <label for="pinkInput"><span data-i18n="fx.reflect">REFLECT</span><input id="pinkInput" type="color" value="#ff2bd6" /></label>
             </div>
           </section>
 
-          <section class="control-section pending-section" aria-disabled="true">
-            <div class="section-title"><span>EXPORT</span><em>04</em></div>
-            <p>透明背景与 2× PNG 将在完整版本启用。</p>
+          <section id="exportControls" class="control-section pending-section" aria-disabled="true" hidden>
+            <div class="section-title"><span data-i18n="export.title">EXPORT</span><em>04</em></div>
+            <p data-i18n="export.pending">Transparent background and 2× PNG will be enabled in the full version.</p>
           </section>
         </aside>
       </section>
     </main>
 
-    <script src="./art-text-presets.js?v=29"></script>
+    <script src="./art-text-presets.js?v=33"></script>
     <script src="./art-text-fields.js?v=13"></script>
-    <script src="./art-text.js?v=123"></script>
+    <script src="./art-text.js?v=140"></script>
   </body>
 </html>
