@@ -1,6 +1,7 @@
 {
   "name": "y2k-type-lab",
   "private": true,
+  "license": "MIT",
   "type": "module",
   "packageManager": "pnpm@11.19.0",
   "scripts": {
