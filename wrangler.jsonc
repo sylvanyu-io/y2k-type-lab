@@ -1,0 +1,25 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "y2k-type-lab",
+  "compatibility_date": "2026-08-19",
+  "main": "./src/worker.js",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [
+    {
+      "pattern": "sylvanyu.io/y2k-type-lab",
+      "zone_name": "sylvanyu.io"
+    },
+    {
+      "pattern": "sylvanyu.io/y2k-type-lab/*",
+      "zone_name": "sylvanyu.io"
+    }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": [
+      "/y2k-type-lab"
+    ]
+  }
+}

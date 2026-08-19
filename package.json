@@ -1,0 +1,14 @@
+{
+  "name": "y2k-type-lab",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.19.0",
+  "scripts": {
+    "build": "node scripts/build-site.mjs",
+    "dev": "pnpm run build && wrangler dev",
+    "deploy": "pnpm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "wrangler": "4.124.0"
+  }
+}
