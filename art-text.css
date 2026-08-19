@@ -678,7 +678,6 @@ input[type="color"] { width: 28px; height: 28px; padding: 0; border: 0; border-r
   .brand-mark { width: 32px; height: 32px; background: rgba(255,43,214,0.045); }
   .brand-lockup strong { font-size: 11px; }
   .brand-lockup div > span,
-  .top-actions .motion-action,
   .export-action { display: none; }
   .runtime-pill {
     justify-self: center;

@@ -1,6 +1,6 @@
 {
   "version": 5,
-  "source": "art-text.html WebGL canvas",
+  "source": "index.html WebGL canvas",
   "composition": "straight-centered",
   "capture": {
     "viewport": [1280, 720],
