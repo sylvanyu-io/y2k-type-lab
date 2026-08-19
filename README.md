@@ -2,13 +2,15 @@
 
 **English** · [简体中文](./README.zh-CN.md)
 
+[Open the live editor →](https://sylvanyu.io/y2k-type-lab/)
+
 A browser-based WebGL 2 editor for chrome, liquid, and glitch lettering.
 
 ![Y2K Type Lab editor showing VHS Chrome with Dot Glitch and Liquid Chrome material studies](./assets/readme/hero.png)
 
 Y2K Type Lab turns short text into shader-driven artwork on a fixed 1600 × 900 canvas. Pick a material, choose a reflection field, tune the surface, then position individual characters directly on the artboard.
 
-The editor is built with plain HTML, CSS, and JavaScript. It runs from static files with no package install, framework, or build step.
+The editor itself is built with plain HTML, CSS, and JavaScript. It runs directly from static files with no package install, framework, or application build step. A small deployment script only stages those files for the production subroute.
 
 ## What you can do
 
@@ -45,6 +47,12 @@ python3 -m http.server 4173
 ```
 
 Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) in a current WebGL 2 browser. A local HTTP server is required; opening `index.html` directly is not supported.
+
+## Production deployment
+
+The public editor runs at [sylvanyu.io/y2k-type-lab/](https://sylvanyu.io/y2k-type-lab/) on Cloudflare Workers. Workers Builds watches the `main` branch; every push runs `pnpm run build` and then deploys with the repository's pinned Wrangler version.
+
+`scripts/build-site.mjs` copies only the runtime files into `dist/y2k-type-lab/`. Mirroring the URL path inside `dist` lets Cloudflare's static-asset handler serve the app from a subroute while keeping every font, preview, reflection field, stylesheet, and script URL relative.
 
 ## Using the editor
 

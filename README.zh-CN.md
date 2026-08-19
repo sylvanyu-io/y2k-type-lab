@@ -2,13 +2,15 @@
 
 [English](./README.md) · **简体中文**
 
+[打开在线编辑器 →](https://sylvanyu.io/y2k-type-lab/)
+
 一个用于制作镀铬、液态和故障艺术字的浏览器端 WebGL 2 编辑器。
 
 ![Y2K Type Lab 编辑器，展示 VHS Chrome、Dot Glitch 和 Liquid Chrome 材质效果](./assets/readme/hero.png)
 
 Y2K Type Lab 把短文本渲染成固定 1600 × 900 画布上的着色器艺术字。选择材质和反射光场，调整表面参数，再直接在画布上移动、旋转和缩放单个字符。
 
-整个编辑器只使用原生 HTML、CSS 和 JavaScript。它从静态文件运行，不需要安装依赖、前端框架或构建步骤。
+编辑器本身只使用原生 HTML、CSS 和 JavaScript，可以直接从静态文件运行，不需要安装依赖、前端框架或应用构建步骤。仓库中的轻量部署脚本只负责把这些文件整理到线上子路由。
 
 ## 可以做什么
 
@@ -45,6 +47,12 @@ python3 -m http.server 4173
 ```
 
 在支持 WebGL 2 的现代浏览器中打开 [http://127.0.0.1:4173/](http://127.0.0.1:4173/)。项目需要通过本地 HTTP 服务器运行，不支持直接双击打开 `index.html`。
+
+## 线上部署
+
+公开版本通过 Cloudflare Workers 运行在 [sylvanyu.io/y2k-type-lab/](https://sylvanyu.io/y2k-type-lab/)。Workers Builds 监听 `main` 分支；每次推送都会执行 `pnpm run build`，再使用仓库锁定的 Wrangler 版本完成部署。
+
+`scripts/build-site.mjs` 只把运行所需文件复制到 `dist/y2k-type-lab/`。让 `dist` 内的目录结构与线上 URL 一致后，Cloudflare 的静态资源处理器就能从子路由提供应用，同时继续使用相对路径加载字体、预览图、反射场、样式和脚本。
 
 ## 使用方法
 
