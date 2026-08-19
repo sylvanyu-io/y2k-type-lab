@@ -1,4 +1,4 @@
-# Y2K Type Material Lab
+# Y2K Type Lab
 
 一个不依赖框架的 WebGL 2 艺术字材质编辑器，面向固定 1600×900 画布烘焙，并提供响应式中英文操作界面。
 
@@ -23,7 +23,7 @@
 ## 运行
 
 ```bash
-cd /Users/yu/Desktop/text-id-map-demo
+cd /Users/yu/Desktop/y2k-type-lab
 python3 -m http.server 4173
 ```
 

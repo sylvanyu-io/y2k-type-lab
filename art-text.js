@@ -37,9 +37,9 @@
   const DEFAULT_LANGUAGE = "en";
   const I18N = Object.freeze({
     en: Object.freeze({
-      "document.title": "Y2K Type Material Lab",
-      "brand.title": "TYPE MATERIAL",
-      "brand.subtitle": "Y2K ART-TEXT EDITOR",
+      "document.title": "Y2K Type Lab",
+      "brand.title": "Y2K TYPE LAB",
+      "brand.subtitle": "WEBGL ART-TEXT EDITOR",
       "common.reset": "RESET",
       "common.apply": "APPLY",
       "common.loading": "LOADING",
@@ -181,9 +181,9 @@
       "error.fallbackFailed": "{error}; fallback failed: {fallback}",
     }),
     zh: Object.freeze({
-      "document.title": "Y2K 艺术字材质实验室",
-      "brand.title": "字体材质",
-      "brand.subtitle": "Y2K 艺术字编辑器",
+      "document.title": "Y2K Type Lab",
+      "brand.title": "Y2K TYPE LAB",
+      "brand.subtitle": "WebGL 艺术字编辑器",
       "common.reset": "重置",
       "common.apply": "应用",
       "common.loading": "加载中",
