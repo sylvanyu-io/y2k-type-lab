@@ -2,13 +2,13 @@
 
 [English](./README.md) · **简体中文**
 
-![Renderer](https://img.shields.io/badge/renderer-WebGL%202-5b8cff)
+![Renderer](https://img.shields.io/badge/renderer-WebGL-5b8cff)
 ![Pipeline](https://img.shields.io/badge/pipeline-Canvas%202D%20%2B%20SDF-ff38cf)
 ![License](https://img.shields.io/badge/license-MIT-2ea44f)
 
 一个在浏览器里做 Y2K 标题字的材质编辑器。输入文字，挑一套材质，再直接拖动、旋转和缩放画布里的每个字。反射、扫描线、点阵和挤出会跟着字一起变，不会留在原来的画布坐标上。
 
-**[▶ 在线演示](https://sylvanyu.io/y2k-type-lab/)** · 需要支持 WebGL 2 的浏览器。
+**[▶ 在线演示](https://sylvanyu.io/y2k-type-lab/)** · 需要浏览器支持 WebGL。
 
 ![Y2K Type Lab 编辑器中的 VHS Chrome、Dot Glitch 和 Liquid Chrome](./assets/readme/hero.webp)
 
@@ -83,7 +83,7 @@ cd y2k-type-lab
 python3 -m http.server 4173
 ```
 
-在支持 WebGL 2 的浏览器里打开 [http://127.0.0.1:4173/](http://127.0.0.1:4173/)。编辑器本身由静态文件组成，本地修改不需要安装依赖，也不用先构建应用。
+在已启用 WebGL 的浏览器里打开 [http://127.0.0.1:4173/](http://127.0.0.1:4173/)。渲染器优先使用 WebGL 2，不可用时回退到 WebGL 1。编辑器本身由静态文件组成，本地修改不需要安装依赖，也不用先构建应用。
 
 ## 渲染笔记
 
@@ -97,7 +97,7 @@ flowchart LR
   Bake --> Distance["裁剪 + 着色距离场"]
   Bake --> Normal["逐字法线"]
   Bake --> Owner["字符 ID + 局部轴<br/>中心 + 尺寸"]
-  Shape --> Material["WebGL 2 材质 pass"]
+  Shape --> Material["WebGL 材质 pass"]
   Distance --> Material
   Normal --> Material
   Owner --> Material

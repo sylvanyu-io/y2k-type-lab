@@ -136,9 +136,9 @@
       "export.pending": "Transparent background and 2× PNG will be enabled in the full version.",
       "unit.layers": "{value} LAYERS",
       "unit.glyphs": "{value} GLYPHS",
-      "status.webglStarting": "WEBGL 2 · STARTING",
-      "status.webglReady": "WEBGL 2 · READY",
-      "status.webglUnavailable": "WEBGL 2 · UNAVAILABLE",
+      "status.webglStarting": "WEBGL · STARTING",
+      "status.webglReady": "{renderer} · READY",
+      "status.webglUnavailable": "WEBGL · UNAVAILABLE",
       "status.shaderError": "SHADER ERROR",
       "status.waitingGlyphBake": "WAITING FOR GLYPH BAKE",
       "status.normalBakeReady": "NORMAL BAKE READY",
@@ -160,6 +160,11 @@
       "reflection.restoringCustom": "Restoring custom reflection field…",
       "reflection.customRestored": "Custom reflection field restored",
       "error.urlRequired": "Enter an image URL",
+      "error.webglUnavailable": "This browser cannot create a WebGL context.",
+      "error.webglTextureSize": "{renderer} supports textures up to {available}px; Y2K Type Lab needs {required}px.",
+      "error.webglTextureUnits": "{renderer} exposes {available} texture units; Y2K Type Lab needs {required}.",
+      "error.webglHighp": "This WebGL 1 device lacks highp fragment precision.",
+      "error.webglDerivatives": "This WebGL 1 device lacks standard shader derivatives.",
       "error.urlTooLarge": "DATA URL is too large (maximum 8 MiB)",
       "error.urlInvalid": "Invalid URL format",
       "error.urlScheme": "Only http(s), data, or blob image URLs are supported",
@@ -280,9 +285,9 @@
       "export.pending": "透明背景与 2× PNG 将在完整版本启用。",
       "unit.layers": "{value} 层",
       "unit.glyphs": "{value} 个字符",
-      "status.webglStarting": "WEBGL 2 · 启动中",
-      "status.webglReady": "WEBGL 2 · 就绪",
-      "status.webglUnavailable": "WEBGL 2 · 不可用",
+      "status.webglStarting": "WEBGL · 启动中",
+      "status.webglReady": "{renderer} · 就绪",
+      "status.webglUnavailable": "WEBGL · 不可用",
       "status.shaderError": "着色器错误",
       "status.waitingGlyphBake": "等待字符烘焙",
       "status.normalBakeReady": "法线烘焙就绪",
@@ -304,6 +309,11 @@
       "reflection.restoringCustom": "正在恢复自定义反射光场…",
       "reflection.customRestored": "自定义反射光场已恢复",
       "error.urlRequired": "请输入图片 URL",
+      "error.webglUnavailable": "当前浏览器无法创建 WebGL 上下文。",
+      "error.webglTextureSize": "{renderer} 最大支持 {available}px 纹理；Y2K Type Lab 需要 {required}px。",
+      "error.webglTextureUnits": "{renderer} 提供 {available} 个纹理单元；Y2K Type Lab 需要 {required} 个。",
+      "error.webglHighp": "当前 WebGL 1 设备不支持片元着色器 highp 精度。",
+      "error.webglDerivatives": "当前 WebGL 1 设备不支持标准着色器导数。",
       "error.urlTooLarge": "DATA URL 过大（最大 8 MiB）",
       "error.urlInvalid": "URL 格式无效",
       "error.urlScheme": "仅支持 http(s)、data 或 blob 图片 URL",
@@ -779,36 +789,110 @@
   idCanvas.height = TEXTURE_HEIGHT;
   const idContext = idCanvas.getContext("2d", { alpha: true, willReadFrequently: true });
 
-  const gl = ui.canvas.getContext("webgl2", {
+  const contextAttributes = {
     alpha: false,
     antialias: false,
     depth: false,
     stencil: false,
     preserveDrawingBuffer: true,
     premultipliedAlpha: false,
-  });
+  };
+
+  let gl = ui.canvas.getContext("webgl2", contextAttributes);
+  const isWebGL2 = Boolean(gl);
+  if (!gl) {
+    gl =
+      ui.canvas.getContext("webgl", contextAttributes)
+      || ui.canvas.getContext("experimental-webgl", contextAttributes);
+  }
 
   if (!gl) {
     ui.renderError.hidden = false;
-    setLocalizedText(ui.renderError, "status.webglUnavailable");
+    setLocalizedText(ui.renderError, "error.webglUnavailable");
     setLocalizedText(ui.gpuStatus, "status.webglUnavailable");
     return;
   }
 
-  const vertexShaderSource = `#version 300 es
-    layout(location = 0) in vec2 aPosition;
-    out vec2 vUv;
+  const rendererLabel = isWebGL2 ? "WEBGL 2" : "WEBGL 1";
+  const requiredTextureSize = Math.max(TEXTURE_WIDTH, TEXTURE_HEIGHT);
+  const maxTextureSize = gl.getParameter(gl.MAX_TEXTURE_SIZE);
+  if (maxTextureSize < requiredTextureSize) {
+    ui.renderError.hidden = false;
+    setLocalizedText(ui.renderError, "error.webglTextureSize", {
+      renderer: rendererLabel,
+      available: maxTextureSize,
+      required: requiredTextureSize,
+    });
+    setLocalizedText(ui.gpuStatus, "status.webglUnavailable");
+    return;
+  }
+
+  const requiredTextureUnits = 8;
+  const textureUnits = gl.getParameter(gl.MAX_TEXTURE_IMAGE_UNITS);
+  if (textureUnits < requiredTextureUnits) {
+    ui.renderError.hidden = false;
+    setLocalizedText(ui.renderError, "error.webglTextureUnits", {
+      renderer: rendererLabel,
+      available: textureUnits,
+      required: requiredTextureUnits,
+    });
+    setLocalizedText(ui.gpuStatus, "status.webglUnavailable");
+    return;
+  }
+
+  let shaderTextureLodExtension = null;
+  if (!isWebGL2) {
+    const highFloat = gl.getShaderPrecisionFormat(gl.FRAGMENT_SHADER, gl.HIGH_FLOAT);
+    if (!highFloat || highFloat.precision === 0) {
+      ui.renderError.hidden = false;
+      setLocalizedText(ui.renderError, "error.webglHighp");
+      setLocalizedText(ui.gpuStatus, "status.webglUnavailable");
+      return;
+    }
+    if (!gl.getExtension("OES_standard_derivatives")) {
+      ui.renderError.hidden = false;
+      setLocalizedText(ui.renderError, "error.webglDerivatives");
+      setLocalizedText(ui.gpuStatus, "status.webglUnavailable");
+      return;
+    }
+    shaderTextureLodExtension = gl.getExtension("EXT_shader_texture_lod");
+  }
+
+  const vertexShaderHeader = isWebGL2
+    ? `#version 300 es
+layout(location = 0) in vec2 aPosition;
+out vec2 vUv;`
+    : `attribute vec2 aPosition;
+varying vec2 vUv;`;
+
+  const vertexShaderSource = `${vertexShaderHeader}
     void main() {
       vUv = aPosition * 0.5 + 0.5;
       gl_Position = vec4(aPosition, 0.0, 1.0);
     }
   `;
 
-  const fragmentShaderSource = `#version 300 es
-    precision highp float;
+  const fragmentShaderHeader = isWebGL2
+    ? `#version 300 es
+precision highp float;
+in vec2 vUv;
+layout(location = 0) out vec4 fragColor;`
+    : `#extension GL_OES_standard_derivatives : enable
+${shaderTextureLodExtension ? "#extension GL_EXT_shader_texture_lod : enable" : ""}
+precision highp float;
+varying vec2 vUv;
+#define texture texture2D
+${shaderTextureLodExtension
+    ? "#define SAMPLE_TEXTURE_GRAD(textureSampler, textureUv, textureDx, textureDy, textureBias) texture2DGradEXT(textureSampler, textureUv, textureDx, textureDy)"
+    : "#define SAMPLE_TEXTURE_GRAD(textureSampler, textureUv, textureDx, textureDy, textureBias) texture2D(textureSampler, textureUv, textureBias)"}
+#define fragColor gl_FragColor`;
 
-    in vec2 vUv;
-    layout(location = 0) out vec4 fragColor;
+  const textureGradCompatibility = isWebGL2
+    ? "#define SAMPLE_TEXTURE_GRAD(textureSampler, textureUv, textureDx, textureDy, textureBias) textureGrad(textureSampler, textureUv, textureDx, textureDy)"
+    : "";
+
+  const fragmentShaderSource = `${fragmentShaderHeader}
+    ${textureGradCompatibility}
     uniform sampler2D uShapeTexture;
     uniform sampler2D uDistanceTexture;
     uniform sampler2D uIdTexture;
@@ -1529,6 +1613,13 @@
       return vec4(premultiplied, alpha);
     }
 
+    vec2 inverseRotate(vec2 value, vec2 axis) {
+      return vec2(
+        dot(value, axis),
+        dot(value, vec2(-axis.y, axis.x))
+      );
+    }
+
     void main() {
       vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
       vec3 background = backgroundColor(uv);
@@ -1629,10 +1720,9 @@
       vec2 glyphAxis = normalize(
         (semanticSample.rb * 255.0 - 128.0) / 127.0 + vec2(0.00001, 0.0)
       );
-      mat2 glyphFrame = mat2(glyphAxis.x, glyphAxis.y, -glyphAxis.y, glyphAxis.x);
       vec2 glyphSize = max(glyphMetadata.zw, vec2(1.0) / uTextureSize);
       vec2 glyphLocal = clamp(
-        transpose(glyphFrame) * (uv - glyphMetadata.xy) / glyphSize,
+        inverseRotate(uv - glyphMetadata.xy, glyphAxis) / glyphSize,
         vec2(-0.75),
         vec2(0.75)
       );
@@ -1678,11 +1768,12 @@
       // uses mirrored wrapping so non-seamless library assets never stretch a
       // clamped terminal row across the rounded rim.
       float fieldFootprint = exp2(uRoughness * 5.5);
-      vec4 fieldSample = textureGrad(
+      vec4 fieldSample = SAMPLE_TEXTURE_GRAD(
         uColorFieldTexture,
         fieldUv,
         dFdx(fieldUv) * fieldFootprint,
-        dFdy(fieldUv) * fieldFootprint
+        dFdy(fieldUv) * fieldFootprint,
+        uRoughness * 5.5
       );
       vec3 sampledField = srgbToLinear(fieldSample.rgb);
       float sampledLuma = dot(sampledField, vec3(0.2126, 0.7152, 0.0722));
@@ -1727,7 +1818,7 @@
       color += mix(uPink, uCyan, uv.x) * glow * 0.28;
       if (uMaterialMode > 1.5) {
         vec2 artworkLocalPx = artworkLocal * artworkSize * uTextureSize;
-        vec2 glyphLocalPx = transpose(glyphFrame) * (uv - glyphMetadata.xy) * uTextureSize;
+        vec2 glyphLocalPx = inverseRotate(uv - glyphMetadata.xy, glyphAxis) * uTextureSize;
         vec2 signalLocalPx = mix(artworkLocalPx, glyphLocalPx, semanticWeight);
         float signalSeed = mix(0.381966, glyphSeed, semanticWeight);
         vec4 vhsMaterial = vhsChromeMaterial(
@@ -1784,11 +1875,7 @@
     }
   `;
 
-  const crtFragmentShaderSource = `#version 300 es
-    precision highp float;
-
-    in vec2 vUv;
-    layout(location = 0) out vec4 fragColor;
+  const crtFragmentShaderSource = `${fragmentShaderHeader}
     uniform sampler2D uSceneTexture;
     uniform vec2 uSceneSize;
     uniform float uPerspectiveAngle;
@@ -1857,11 +1944,7 @@
     }
   `;
 
-  const copyFragmentShaderSource = `#version 300 es
-    precision highp float;
-
-    in vec2 vUv;
-    layout(location = 0) out vec4 fragColor;
+  const copyFragmentShaderSource = `${fragmentShaderHeader}
     uniform sampler2D uSceneTexture;
     uniform vec2 uSceneSize;
     uniform float uPerspectiveAngle;
@@ -1881,11 +1964,7 @@
     }
   `;
 
-  const dotPresentFragmentShaderSource = `#version 300 es
-    precision highp float;
-
-    in vec2 vUv;
-    layout(location = 0) out vec4 fragColor;
+  const dotPresentFragmentShaderSource = `${fragmentShaderHeader}
     uniform sampler2D uSceneTexture;
     uniform vec2 uSceneSize;
     uniform float uPerspectiveAngle;
@@ -1975,6 +2054,7 @@
     setLocalizedText(ui.gpuStatus, "status.shaderError");
     return;
   }
+  ui.canvas.dataset.renderer = isWebGL2 ? "webgl2" : "webgl1";
 
   const locations = {
     position: gl.getAttribLocation(program, "aPosition"),
@@ -4129,7 +4209,7 @@
   });
   window.addEventListener("resize", render, { passive: true });
 
-  setLocalizedText(ui.gpuStatus, "status.webglReady");
+  setLocalizedText(ui.gpuStatus, "status.webglReady", { renderer: rendererLabel });
   buildNoiseTexture();
   buildReflectionGallery().catch((error) => {
     ui.renderError.hidden = false;

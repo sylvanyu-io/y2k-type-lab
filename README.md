@@ -2,7 +2,7 @@
 
 **English** · [简体中文](./README.zh-CN.md)
 
-![Renderer](https://img.shields.io/badge/renderer-WebGL%202-5b8cff)
+![Renderer](https://img.shields.io/badge/renderer-WebGL-5b8cff)
 ![Pipeline](https://img.shields.io/badge/pipeline-Canvas%202D%20%2B%20SDF-ff38cf)
 ![License](https://img.shields.io/badge/license-MIT-2ea44f)
 
@@ -10,7 +10,7 @@ A browser editor for chrome, liquid, and dot-matrix lettering. Type a few
 lines, choose a material, then move, rotate, and scale individual characters.
 Reflections, scanlines, dots, and depth stay aligned with the edited glyphs.
 
-**[▶ Open Y2K Type Lab](https://sylvanyu.io/y2k-type-lab/)** · Requires a browser with WebGL 2.
+**[▶ Open Y2K Type Lab](https://sylvanyu.io/y2k-type-lab/)** · Requires a browser with WebGL.
 
 ![Y2K Type Lab editor showing VHS Chrome, Dot Glitch, and Liquid Chrome](./assets/readme/hero.webp)
 
@@ -100,7 +100,8 @@ cd y2k-type-lab
 python3 -m http.server 4173
 ```
 
-Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) in a browser with WebGL 2.
+Open [http://127.0.0.1:4173/](http://127.0.0.1:4173/) in a browser with WebGL
+enabled. The renderer uses WebGL 2 when available and falls back to WebGL 1.
 The editor itself runs from static files, so local editing needs no package
 installation or application build.
 
@@ -117,7 +118,7 @@ flowchart LR
   Bake --> Distance["Clip + shading distance"]
   Bake --> Normal["Per-glyph normals"]
   Bake --> Owner["Owner ID + local axes<br/>center + size"]
-  Shape --> Material["WebGL 2 material pass"]
+  Shape --> Material["WebGL material pass"]
   Distance --> Material
   Normal --> Material
   Owner --> Material
